@@ -1,3 +1,10 @@
+import os
+import zipfile
+
+# 检查如果只有压缩包，没有解压后的字体，就自动在云端解压它
+if os.path.exists("fonts/general_bold.zip") and not os.path.exists("fonts/general_bold.ttf"):
+    with zipfile.ZipFile("fonts/general_bold.zip", 'r') as zip_ref:
+        zip_ref.extractall("fonts/")
 import streamlit as st
 import random
 import os
