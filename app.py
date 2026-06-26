@@ -99,7 +99,6 @@ if 'forked_cards' not in st.session_state:
     st.session_state.forked_cards = set()
 
 if 'edit_view_mode' not in st.session_state:
-    # 📍 [UI名称修改点] 默认视图模式名称
     st.session_state.edit_view_mode = "批量预览模式"
 
 
@@ -137,7 +136,8 @@ MAIN_SUB_COPYWRITING_POOL = {
 def render_template_1(canvas, icon_src, main_title, sub_title, font_main, sub_font, raw_rgb, colors):
     img_width, img_height = canvas.size
     draw = ImageDraw.Draw(canvas)
-    icon_target_size = 720   
+    icon_target_size = 720 
+   
     icon_y_ratio = 0.15      
     main_title_y = 1110      
     line_spacing = 145       
@@ -334,7 +334,7 @@ def render_template_4(canvas, icon_src, main_title, sub_title, font_main, sub_fo
     np_img = np.array(canvas.convert("RGB"))
     white_mask = (np_img[:, :, 0] > 242) & (np_img[:, :, 1] > 242) & (np_img[:, :, 2] > 242)
     y_indices, x_indices = np.where(white_mask)
-    
+  
     if len(y_indices) > 500 and len(x_indices) > 500:
         x_min, x_max = int(np.min(x_indices)), int(np.max(x_indices))
         y_min, y_max = int(np.min(y_indices)), int(np.max(y_indices))
@@ -449,7 +449,7 @@ with col_left:
 
     if bg_source == "AI智能渐变生成":
         bg_type = st.selectbox("选择渐变美学风格：", ["同色清爽渐变", "多色梦幻渐变"])
-    elif bg_source == "直接上传背景图":
+    elif bg_source == "上传背景图":  # 🛠️ 修复：与单选框定义的字符串保持完全一致
         uploaded_bg = st.file_uploader("上传自定义背景大图：", type=["png", "jpg", "jpeg"], key="bg_uploader")
 
     # 📍 [UI名称修改点] 步骤四：批量文案与颜色设置
@@ -478,7 +478,7 @@ with col_left:
         st.session_state.custom_main_title = global_main_title
         global_sub_title = st.text_input("批量-下方小字文案：", value=st.session_state.custom_sub_title)
         st.session_state.custom_sub_title = global_sub_title
-        
+       
         with st.expander("文字配色管理", expanded=True):
             c1, c2 = st.columns(2)
             global_colors_config["main"] = c1.color_picker("上方大字", "#FFFFFF")
@@ -552,7 +552,7 @@ if uploaded_icons:
             else:
                 canvas = Image.new("RGB", (img_width, img_height), color=(255, 255, 255))
          
-        elif bg_source == "直接上传背景图" and uploaded_bg is not None:
+        elif bg_source == "上传背景图" and uploaded_bg is not None:  # 🛠️ 修复：与上面一致
             bg_img = Image.open(uploaded_bg).convert("RGB")
             canvas = bg_img.resize((img_width, img_height), Image.Resampling.LANCZOS).copy()
             
@@ -567,7 +567,7 @@ if uploaded_icons:
                         canvas = bg_img.convert("RGB").resize((img_width, img_height), Image.Resampling.LANCZOS).copy()
             else:
                 canvas = Image.new("RGB", (img_width, img_height), color=(255, 255, 255))
-                
+            
         elif bg_source == "AI智能渐变生成":
             random_hue_1 = random.random() 
             if "同色清爽" in bg_type:
@@ -644,7 +644,7 @@ with col_right:
                         img_buffer = io.BytesIO()
                         current_canvas.save(img_buffer, format="PNG")
                         img_bytes = img_buffer.getvalue()
-                        
+                      
                         status_label = " (已独立微调)" if global_idx in st.session_state.forked_cards else " (全局同步)"
                         st.image(img_buffer, caption=f"卡片 {global_idx+1}{status_label}", use_container_width=True)
                         
@@ -693,7 +693,7 @@ with col_right:
                             # 📍 [UI名称修改点] 单独改动文字框组件名
                             new_tag = st.text_input("独立小字：", value=current_cfg["tag_text"], key=f"individual_tag_{idx}")
                             st.session_state.individual_configs[idx]["tag_text"] = new_tag
-                            
+                    
                         new_main = st.text_input("独立主标题：", value=current_cfg["main_title"], key=f"individual_main_{idx}")
                         new_sub = st.text_input("独立副标题：", value=current_cfg["sub_title"], key=f"individual_sub_{idx}")
                         
@@ -704,13 +704,13 @@ with col_right:
                             if "模板2" in template_choice:
                                 c_t = st.color_picker("小字色", value=current_cfg["colors"].get("tag", "#000000"), key=f"cp_t_{idx}")
                                 st.session_state.individual_configs[idx]["colors"]["tag"] = c_t
-                            
+        
                             c_m = st.color_picker("主字色", value=current_cfg["colors"].get("main", "#000000"), key=f"cp_m_{idx}")
                             c_s = st.color_picker("副字色", value=current_cfg["colors"].get("sub", "#000000"), key=f"cp_s_{idx}")
-                            
+              
                             st.session_state.individual_configs[idx]["colors"]["main"] = c_m
                             st.session_state.individual_configs[idx]["colors"]["sub"] = c_s
-                            
+                          
                         # 📍 [UI名称修改点] 应用独立改动的确认按钮
                         if st.button("保存当前微调", key=f"apply_individual_{idx}"):
                             st.session_state.forked_cards.add(idx)
