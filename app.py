@@ -119,6 +119,11 @@ def get_image_main_hue(image_path):
     except:
         return 0.0
 
+def sanitize_filename(name):
+    invalid_chars = '<>:"/\\|?*'
+    safe_name = ''.join('_' if char in invalid_chars else char for char in name)
+    return safe_name.strip() or "template"
+
 MAIN_SUB_COPYWRITING_POOL = {
     "和对象第一次玩到三点": "发现得有点晚，但体验很不错",
     "这才是iPad该玩的游戏": "我就喜欢玩这种不用动脑的游戏…",
@@ -619,7 +624,24 @@ with col_right:
     if uploaded_icons and generated_canvases:
         # 📍 [UI名称修改点] 步骤五主标题
         st.header("生成结果控制")
-         
+
+        zip_buffer = io.BytesIO()
+        safe_template_name = sanitize_filename(template_choice)
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            for idx, (_, current_canvas) in enumerate(generated_canvases, start=1):
+                img_buffer = io.BytesIO()
+                current_canvas.save(img_buffer, format="PNG")
+                zip_file.writestr(f"{idx:02d}_{safe_template_name}.png", img_buffer.getvalue())
+
+        st.download_button(
+            label="一键下载全部图片 ZIP",
+            data=zip_buffer.getvalue(),
+            file_name=f"{safe_template_name}_全部图片.zip",
+            mime="application/zip",
+            use_container_width=True,
+            key="download_all_zip"
+        )
+          
         # 📍 [UI名称修改点] 单选切换模式的文字名称
         st.session_state.edit_view_mode = st.radio(
             "选择编辑与预览模式：",
