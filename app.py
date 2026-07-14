@@ -142,6 +142,9 @@ if 'individual_configs' not in st.session_state:
 if 'forked_cards' not in st.session_state:
     st.session_state.forked_cards = set()
 
+if 'individual_control_versions' not in st.session_state:
+    st.session_state.individual_control_versions = {}
+
 if 'edit_view_mode' not in st.session_state:
     st.session_state.edit_view_mode = "批量预览模式"
 
@@ -243,6 +246,20 @@ def create_background_canvas(bg_config, idx, icon_hue):
         return canvas, img_width, img_height
 
     return Image.new("RGB", (img_width, img_height), color=(255, 255, 255)), img_width, img_height
+
+def mark_card_independent(idx):
+    if idx not in st.session_state.forked_cards:
+        st.session_state.forked_cards.add(idx)
+        return True
+    return False
+
+def reset_individual_controls(idx):
+    current_version = st.session_state.individual_control_versions.get(idx, 0)
+    st.session_state.individual_control_versions[idx] = current_version + 1
+
+def individual_key(name, idx):
+    version = st.session_state.individual_control_versions.get(idx, 0)
+    return f"{name}_{idx}_{version}"
 
 MAIN_SUB_COPYWRITING_POOL = {
     "和对象第一次玩到三点": "发现得有点晚，但体验很不错",
@@ -787,6 +804,7 @@ with col_right:
                             if st.button(lock_label, key=f"grid_lock_{global_idx}", help="锁定后不再受左侧批量设置影响", use_container_width=True):
                                 if global_idx in st.session_state.forked_cards:
                                     st.session_state.forked_cards.remove(global_idx)
+                                    reset_individual_controls(global_idx)
                                 else:
                                     st.session_state.forked_cards.add(global_idx)
                                 st.rerun()
@@ -831,34 +849,46 @@ with col_right:
                             if st.button(lock_action, key=f"individual_lock_{idx}", use_container_width=True):
                                 if idx in st.session_state.forked_cards:
                                     st.session_state.forked_cards.remove(idx)
+                                    reset_individual_controls(idx)
                                 else:
                                     st.session_state.forked_cards.add(idx)
                                 st.rerun()
                         
                         if "模板2" in template_choice:
                             # 📍 [UI名称修改点] 单独改动文字框组件名
-                            new_tag = st.text_input("独立小字：", value=current_cfg["tag_text"], key=f"individual_tag_{idx}")
+                            new_tag = st.text_input("独立小字：", value=current_cfg["tag_text"], key=individual_key("individual_tag", idx))
+                            if new_tag != current_cfg["tag_text"]:
+                                mark_card_independent(idx)
                             st.session_state.individual_configs[idx]["tag_text"] = new_tag
                     
-                        new_main = st.text_input("独立主标题：", value=current_cfg["main_title"], key=f"individual_main_{idx}")
-                        new_sub = st.text_input("独立副标题：", value=current_cfg["sub_title"], key=f"individual_sub_{idx}")
+                        new_main = st.text_input("独立主标题：", value=current_cfg["main_title"], key=individual_key("individual_main", idx))
+                        new_sub = st.text_input("独立副标题：", value=current_cfg["sub_title"], key=individual_key("individual_sub", idx))
                         
+                        if new_main != current_cfg["main_title"] or new_sub != current_cfg["sub_title"]:
+                            mark_card_independent(idx)
                         st.session_state.individual_configs[idx]["main_title"] = new_main
                         st.session_state.individual_configs[idx]["sub_title"] = new_sub
                         
                         with st.expander("细节配色方案", expanded=False):
                             if "模板2" in template_choice:
-                                c_t = st.color_picker("小字色", value=current_cfg["colors"].get("tag", "#000000"), key=f"cp_t_{idx}")
+                                c_t = st.color_picker("小字色", value=current_cfg["colors"].get("tag", "#000000"), key=individual_key("cp_t", idx))
+                                if c_t != current_cfg["colors"].get("tag", "#000000"):
+                                    mark_card_independent(idx)
                                 st.session_state.individual_configs[idx]["colors"]["tag"] = c_t
         
-                            c_m = st.color_picker("主字色", value=current_cfg["colors"].get("main", "#000000"), key=f"cp_m_{idx}")
-                            c_s = st.color_picker("副字色", value=current_cfg["colors"].get("sub", "#000000"), key=f"cp_s_{idx}")
+                            c_m = st.color_picker("主字色", value=current_cfg["colors"].get("main", "#000000"), key=individual_key("cp_m", idx))
+                            c_s = st.color_picker("副字色", value=current_cfg["colors"].get("sub", "#000000"), key=individual_key("cp_s", idx))
               
+                            if c_m != current_cfg["colors"].get("main", "#000000") or c_s != current_cfg["colors"].get("sub", "#000000"):
+                                mark_card_independent(idx)
                             st.session_state.individual_configs[idx]["colors"]["main"] = c_m
                             st.session_state.individual_configs[idx]["colors"]["sub"] = c_s
 
                         with st.expander("单张背景设置", expanded=False):
                             current_bg_cfg = current_cfg.get("background", global_background_config.copy())
+                            old_bg_source = current_bg_cfg.get("bg_source", "纯白背景")
+                            old_bg_type = current_bg_cfg.get("bg_type", "同色清爽渐变")
+                            old_bg_image_bytes = current_bg_cfg.get("bg_image_bytes")
                             bg_options = ["纯白背景", "AI智能渐变生成", "上传背景图"]
                             current_bg_source = current_bg_cfg.get("bg_source", "纯白背景")
                             if current_bg_source not in bg_options:
@@ -867,7 +897,7 @@ with col_right:
                                 "独立背景来源：",
                                 bg_options,
                                 index=bg_options.index(current_bg_source),
-                                key=f"individual_bg_source_{idx}"
+                                key=individual_key("individual_bg_source", idx)
                             )
                             new_bg_type = current_bg_cfg.get("bg_type", "同色清爽渐变")
                             if new_bg_source == "AI智能渐变生成":
@@ -878,14 +908,14 @@ with col_right:
                                     "独立渐变美学风格：",
                                     gradient_options,
                                     index=gradient_options.index(new_bg_type),
-                                    key=f"individual_bg_type_{idx}"
+                                    key=individual_key("individual_bg_type", idx)
                                 )
                             new_bg_upload = None
                             if new_bg_source == "上传背景图":
                                 new_bg_upload = st.file_uploader(
                                     "上传当前图片专用背景：",
                                     type=["png", "jpg", "jpeg"],
-                                    key=f"individual_bg_upload_{idx}"
+                                    key=individual_key("individual_bg_upload", idx)
                                 )
                             bg_image_bytes = current_bg_cfg.get("bg_image_bytes")
                             if new_bg_upload is not None:
@@ -896,6 +926,14 @@ with col_right:
                                 "bg_image_bytes": bg_image_bytes if new_bg_source == "上传背景图" else None,
                                 "bg_seed": current_bg_cfg.get("bg_seed", st.session_state.random_seed + idx)
                             }
+                            bg_changed = (
+                                new_bg_source != old_bg_source or
+                                new_bg_type != old_bg_type or
+                                (bg_image_bytes if new_bg_source == "上传背景图" else None) != old_bg_image_bytes
+                            )
+                            if bg_changed:
+                                mark_card_independent(idx)
+                                st.rerun()
                           
                         # 📍 [UI名称修改点] 应用独立改动的确认按钮
                         if st.button("保存当前微调", key=f"apply_individual_{idx}"):
