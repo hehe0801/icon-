@@ -29,7 +29,7 @@ st.markdown("""
         /* 框定大屏优化，防止 2K 屏幕下内容极度拉伸 */
         .main .block-container {
             max-width: 2560px !important;
-            padding-top: 2rem !important;
+            padding-top: 1.5rem !important;
             padding-bottom: 2rem !important;
             padding-left: 3rem !important;
             padding-right: 3rem !important;
@@ -39,6 +39,50 @@ st.markdown("""
         h1, h2, h3 {
             font-weight: 600 !important;
             color: #222222 !important;
+        }
+
+        .tool-hero {
+            padding: 22px 0 18px 0;
+            border-bottom: 1px solid #e5e7eb;
+            margin-bottom: 22px;
+        }
+        .tool-title {
+            font-size: 34px;
+            line-height: 1.2;
+            font-weight: 700;
+            color: #111827;
+            margin: 0 0 8px 0;
+        }
+        .tool-subtitle {
+            font-size: 14px;
+            color: #4b5563;
+            margin: 0;
+        }
+        .step-hint {
+            color: #6b7280;
+            font-size: 13px;
+            margin: -6px 0 8px 0;
+        }
+        .result-toolbar {
+            background: #f8fafc;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 14px 16px 16px 16px;
+            margin-bottom: 14px;
+        }
+        .result-toolbar-title {
+            font-size: 16px;
+            font-weight: 650;
+            color: #111827;
+            margin-bottom: 4px;
+        }
+        .result-toolbar-desc {
+            color: #6b7280;
+            font-size: 13px;
+            margin-bottom: 10px;
+        }
+        div.stDownloadButton > button {
+            font-weight: 600 !important;
         }
         
         /* 操作区步骤卡片分层色块 (Expander / Container) */
@@ -62,7 +106,7 @@ st.markdown("""
 
         /* 优化布局组件间距 */
         [data-testid="stVerticalBlockBorderWrapper"] > div > div { justify-content: flex-start !important; }
-        [data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
+        [data-testid="stVerticalBlock"] { gap: 0.55rem !important; }
         div[data-testid="stFormElement"] { margin-bottom: 0px !important; }
     </style>
 """, unsafe_allow_html=True)
@@ -395,17 +439,21 @@ TEMPLATE_REGISTRY = {
 # 🌐 3. 前端 UI 渲染（左侧操作区，右侧预览区格局）
 # ====================================================================
 # 📍 [UI名称修改点] 系统主标题与子说明
-st.title("icon类带量图复刻系统")
-st.write("尺寸标准：1280×1706 | 支持多张 Icon 批量倒入与精细化单张覆盖")
-st.markdown("---")
+st.markdown("""
+    <div class="tool-hero">
+        <div class="tool-title">游戏买量图批量生成工作台</div>
+        <p class="tool-subtitle">上传 Icon，选择模板与背景，批量生成 1280×1706 高清投放图。</p>
+    </div>
+""", unsafe_allow_html=True)
 
-col_left, col_right = st.columns([4, 6])
+col_left, col_right = st.columns([4, 6], gap="large")
 
 # ----------------- 左侧：精简纯文字操作面板 -----------------
 with col_left:
     # 📍 [UI名称修改点] 步骤一：选择排版模板
-    st.header("1.选择排版模板")
-    template_choice = st.selectbox("选择排版方案：", list(TEMPLATE_REGISTRY.keys()))
+    st.header("1. 选择排版模板")
+    st.markdown('<div class="step-hint">先决定整体版式，再选择适合游戏气质的视觉风格。</div>', unsafe_allow_html=True)
+    template_choice = st.selectbox("排版方案", list(TEMPLATE_REGISTRY.keys()))
     
     TEMPLATE_TEXT_MAP = {
         "模板1：质感大icon": ("和对象第一次玩到凌晨", "这游戏也太解压了吧！"),
@@ -423,19 +471,23 @@ with col_left:
             st.session_state.last_template = template_choice
         
     # 📍 [UI名称修改点] 视觉风格选项
-    style_choice = st.selectbox("选择视觉风格：", ["通用高端风", "可爱休闲风", "硬核竞技风"])
+    style_choice = st.selectbox("视觉风格", ["通用高端风", "可爱休闲风", "硬核竞技风"])
 
     # 📍 [UI名称修改点] 步骤二：上传 Icon
-    st.header("2.上传游戏 Icon")
-    uploaded_icons = st.file_uploader("选择 Icon 图像（可多选，上限9张）：", type=["png", "jpg", "jpeg"], accept_multiple_files=True, key="icon_uploader")
+    st.header("2. 上传游戏 Icon")
+    st.markdown('<div class="step-hint">支持 PNG、JPG，可一次上传多张，最多处理 9 张。</div>', unsafe_allow_html=True)
+    uploaded_icons = st.file_uploader("选择 Icon 图像", type=["png", "jpg", "jpeg"], accept_multiple_files=True, key="icon_uploader")
     
     if uploaded_icons and len(uploaded_icons) > 9:
         st.error("最多支持处理 9 张 Icon，超出部分将被自动截断。")
     
     uploaded_icons = uploaded_icons[:9]
+    if uploaded_icons:
+        st.success(f"已载入 {len(uploaded_icons)} 张 Icon")
 
     # 📍 [UI名称修改点] 步骤三：背景画布设置
-    st.header("3.背景画布设置")
+    st.header("3. 背景画布设置")
+    st.markdown('<div class="step-hint">为当前模板选择背景来源，锁定后重新生成时会保留背景。</div>', unsafe_allow_html=True)
     st.session_state.lock_background = st.toggle("锁定当前背景", value=st.session_state.lock_background)
     
     uploaded_bg = None
@@ -458,7 +510,8 @@ with col_left:
         uploaded_bg = st.file_uploader("上传自定义背景大图：", type=["png", "jpg", "jpeg"], key="bg_uploader")
 
     # 📍 [UI名称修改点] 步骤四：批量文案与颜色设置
-    st.header("4.批量文案与颜色设置")
+    st.header("4. 批量文案与颜色设置")
+    st.markdown('<div class="step-hint">这里的文案会同步应用到所有图片，单张细调可在右侧完成。</div>', unsafe_allow_html=True)
     st.session_state.lock_copywriting = st.toggle("锁定当前文字文案", value=st.session_state.lock_copywriting)
     
     global_colors_config = {"tag": "#000000", "main": "#000000", "sub": "#000000"}
@@ -633,14 +686,27 @@ with col_right:
                 current_canvas.save(img_buffer, format="PNG")
                 zip_file.writestr(f"{idx:02d}_{safe_template_name}.png", img_buffer.getvalue())
 
-        st.download_button(
-            label="一键下载全部图片 ZIP",
-            data=zip_buffer.getvalue(),
-            file_name=f"{safe_template_name}_全部图片.zip",
-            mime="application/zip",
-            use_container_width=True,
-            key="download_all_zip"
+        st.markdown(
+            f"""
+            <div class="result-toolbar">
+                <div class="result-toolbar-title">已生成 {len(generated_canvases)} 张图片</div>
+                <div class="result-toolbar-desc">当前模板：{template_choice}。可单张下载，也可一键打包下载全部 PNG。</div>
+            </div>
+            """,
+            unsafe_allow_html=True
         )
+        download_col, zip_note_col = st.columns([5, 3])
+        with download_col:
+            st.download_button(
+                label="一键下载全部图片 ZIP",
+                data=zip_buffer.getvalue(),
+                file_name=f"{safe_template_name}_全部图片.zip",
+                mime="application/zip",
+                use_container_width=True,
+                key="download_all_zip"
+            )
+        with zip_note_col:
+            st.caption("压缩包内命名：01_模板名.png")
           
         # 📍 [UI名称修改点] 单选切换模式的文字名称
         st.session_state.edit_view_mode = st.radio(
