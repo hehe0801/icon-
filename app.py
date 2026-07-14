@@ -168,6 +168,82 @@ def sanitize_filename(name):
     safe_name = ''.join('_' if char in invalid_chars else char for char in name)
     return safe_name.strip() or "template"
 
+def make_background_config(source, gradient_type="同色清爽渐变", uploaded_file=None):
+    return {
+        "bg_source": source,
+        "bg_type": gradient_type,
+        "bg_image_bytes": uploaded_file.getvalue() if uploaded_file is not None else None
+    }
+
+def create_background_canvas(bg_config, idx, icon_hue):
+    img_width, img_height = 1280, 1706
+    source = bg_config.get("bg_source", "纯白背景")
+    gradient_type = bg_config.get("bg_type", "同色清爽渐变")
+    bg_seed = bg_config.get("bg_seed")
+    if bg_seed is not None:
+        random.seed(bg_seed)
+
+    if source == "模板4智能库":
+        t4_files = [f for f in os.listdir(T4_DIR) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+        if t4_files:
+            similar_bgs = []
+            for f in t4_files:
+                bg_hue = get_image_main_hue(os.path.join(T4_DIR, f))
+                if min(abs(bg_hue - icon_hue), 1.0 - abs(bg_hue - icon_hue)) < 0.15:
+                    similar_bgs.append(f)
+            if similar_bgs and random.random() < 0.7:
+                chosen_bg = random.choice(similar_bgs)
+            else:
+                chosen_bg = random.choice(t4_files)
+            with open(os.path.join(T4_DIR, chosen_bg), "rb") as f_img:
+                with Image.open(f_img) as bg_img:
+                    canvas = bg_img.convert("RGB").copy()
+            return canvas, canvas.size[0], canvas.size[1]
+        return Image.new("RGB", (img_width, img_height), color=(255, 255, 255)), img_width, img_height
+
+    if source == "上传背景图" and bg_config.get("bg_image_bytes"):
+        bg_img = Image.open(io.BytesIO(bg_config["bg_image_bytes"])).convert("RGB")
+        canvas = bg_img.resize((img_width, img_height), Image.Resampling.LANCZOS).copy()
+        return canvas, img_width, img_height
+
+    if source == "背景文件夹库随机匹配":
+        bg_dir = "backgrounds"
+        if not os.path.exists(bg_dir):
+            os.makedirs(bg_dir)
+        bg_files = [f for f in os.listdir(bg_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+        if bg_files:
+            chosen_bg_name = bg_files[(st.session_state.random_seed + idx) % len(bg_files)]
+            with open(os.path.join(bg_dir, chosen_bg_name), "rb") as f_img:
+                with Image.open(f_img) as bg_img:
+                    canvas = bg_img.convert("RGB").resize((img_width, img_height), Image.Resampling.LANCZOS).copy()
+            return canvas, img_width, img_height
+        return Image.new("RGB", (img_width, img_height), color=(255, 255, 255)), img_width, img_height
+
+    if source == "AI智能渐变生成":
+        random_hue_1 = random.random()
+        if "同色清爽" in gradient_type:
+            opt_s1, opt_l1 = 1.3, 0.88
+            opt_s2, opt_l2 = 0.12, 0.98
+            rgb_1 = [int(x*255) for x in colorsys.hls_to_rgb(random_hue_1, opt_l1, opt_s1)]
+            rgb_2 = [int(x*255) for x in colorsys.hls_to_rgb(random_hue_1, opt_l2, opt_s2)]
+        else:
+            opt_l, opt_s = 0.97, 0.7
+            random_hue_2 = (random_hue_1 + 0.15) % 1.0
+            rgb_1 = [int(x*255) for x in colorsys.hls_to_rgb(random_hue_1, opt_l - 0.2, opt_s)]
+            rgb_2 = [int(x*255) for x in colorsys.hls_to_rgb(random_hue_2, opt_l - 0.2, opt_s)]
+
+        canvas = Image.new("RGB", (img_width, img_height), color=tuple(rgb_1))
+        draw_bg = ImageDraw.Draw(canvas)
+        for y in range(img_height):
+            blend = y / img_height
+            curr_r = max(0, min(255, int(rgb_1[0] * (1 - blend) + rgb_2[0] * blend)))
+            curr_g = max(0, min(255, int(rgb_1[1] * (1 - blend) + rgb_2[2] * blend)))
+            curr_b = max(0, min(255, int(rgb_1[2] * (1 - blend) + rgb_2[2] * blend)))
+            draw_bg.line([(0, y), (img_width, y)], fill=(curr_r, curr_g, curr_b))
+        return canvas, img_width, img_height
+
+    return Image.new("RGB", (img_width, img_height), color=(255, 255, 255)), img_width, img_height
+
 MAIN_SUB_COPYWRITING_POOL = {
     "和对象第一次玩到三点": "发现得有点晚，但体验很不错",
     "这才是iPad该玩的游戏": "我就喜欢玩这种不用动脑的游戏…",
@@ -492,6 +568,7 @@ with col_left:
     
     uploaded_bg = None
     bg_source = "纯白初始背景"
+    bg_type = "同色清爽渐变"
     
     if "模板4" in template_choice:
         st.info("已开启全自动随机智能匹配。")
@@ -508,6 +585,8 @@ with col_left:
         bg_type = st.selectbox("选择渐变美学风格：", ["同色清爽渐变", "多色梦幻渐变"])
     elif bg_source == "上传背景图":  # 🛠️ 修复：与单选框定义的字符串保持完全一致
         uploaded_bg = st.file_uploader("上传自定义背景大图：", type=["png", "jpg", "jpeg"], key="bg_uploader")
+
+    global_background_config = make_background_config(bg_source, bg_type, uploaded_bg)
 
     # 📍 [UI名称修改点] 步骤四：批量文案与颜色设置
     st.header("4. 批量文案与颜色设置")
@@ -588,77 +667,33 @@ if uploaded_icons:
             raw_rgb = (230, 45, 45)
             icon_hue = 0.0
 
-        img_width, img_height = 1280, 1706
-        canvas = None
+        default_card_config = {
+            "main_title": st.session_state.custom_main_title,
+            "sub_title": st.session_state.custom_sub_title,
+            "tag_text": st.session_state.custom_tag_text,
+            "colors": global_colors_config.copy(),
+            "background": global_background_config.copy()
+        }
+        default_card_config["background"]["bg_seed"] = st.session_state.random_seed + idx
 
-        if bg_source == "模板4智能库":
-            t4_files = [f for f in os.listdir(T4_DIR) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-            if t4_files:
-                similar_bgs = []
-                for f in t4_files:
-                    bg_hue = get_image_main_hue(os.path.join(T4_DIR, f))
-                    if min(abs(bg_hue - icon_hue), 1.0 - abs(bg_hue - icon_hue)) < 0.15:
-                        similar_bgs.append(f)
-                if similar_bgs and random.random() < 0.7:
-                    chosen_bg = random.choice(similar_bgs)
-                else:
-                    chosen_bg = random.choice(t4_files)
-                with open(os.path.join(T4_DIR, chosen_bg), "rb") as f_img:
-                    with Image.open(f_img) as bg_img:
-                        canvas = bg_img.convert("RGB").copy()
-                img_width, img_height = canvas.size
-            else:
-                canvas = Image.new("RGB", (img_width, img_height), color=(255, 255, 255))
-         
-        elif bg_source == "上传背景图" and uploaded_bg is not None:  # 🛠️ 修复：与上面一致
-            bg_img = Image.open(uploaded_bg).convert("RGB")
-            canvas = bg_img.resize((img_width, img_height), Image.Resampling.LANCZOS).copy()
-            
-        elif bg_source == "背景文件夹库随机匹配":
-            bg_dir = "backgrounds"
-            if not os.path.exists(bg_dir): os.makedirs(bg_dir)
-            bg_files = [f for f in os.listdir(bg_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-            if bg_files:
-                chosen_bg_name = bg_files[(st.session_state.random_seed + idx) % len(bg_files)]
-                with open(os.path.join(bg_dir, chosen_bg_name), "rb") as f_img:
-                    with Image.open(f_img) as bg_img:
-                        canvas = bg_img.convert("RGB").resize((img_width, img_height), Image.Resampling.LANCZOS).copy()
-            else:
-                canvas = Image.new("RGB", (img_width, img_height), color=(255, 255, 255))
-            
-        elif bg_source == "AI智能渐变生成":
-            random_hue_1 = random.random() 
-            if "同色清爽" in bg_type:
-                opt_s1, opt_l1 = 1.3, 0.88  
-                opt_s2, opt_l2 = 0.12, 0.98  
-                rgb_1 = [int(x*255) for x in colorsys.hls_to_rgb(random_hue_1, opt_l1, opt_s1)]
-                rgb_2 = [int(x*255) for x in colorsys.hls_to_rgb(random_hue_1, opt_l2, opt_s2)]
-            else:
-                opt_l, opt_s = 0.97, 0.7  
-                random_hue_2 = (random_hue_1 + 0.15) % 1.0
-                rgb_1 = [int(x*255) for x in colorsys.hls_to_rgb(random_hue_1, opt_l - 0.2, opt_s)]
-                rgb_2 = [int(x*255) for x in colorsys.hls_to_rgb(random_hue_2, opt_l - 0.2, opt_s)]
-            
-            canvas = Image.new("RGB", (img_width, img_height), color=tuple(rgb_1))
-            draw_bg = ImageDraw.Draw(canvas)
-            for y in range(img_height):
-                blend = y / img_height
-                curr_r = max(0, min(255, int(rgb_1[0] * (1 - blend) + rgb_2[0] * blend)))
-                curr_g = max(0, min(255, int(rgb_1[1] * (1 - blend) + rgb_2[2] * blend)))
-                curr_b = max(0, min(255, int(rgb_1[2] * (1 - blend) + rgb_2[2] * blend)))
-                draw_bg.line([(0, y), (img_width, y)], fill=(curr_r, curr_g, curr_b))
-        else:
-            canvas = Image.new("RGB", (img_width, img_height), color=(255, 255, 255))
-
-        if idx not in st.session_state.forked_cards:
+        if idx not in st.session_state.individual_configs:
+            st.session_state.individual_configs[idx] = default_card_config
+        elif idx not in st.session_state.forked_cards:
             st.session_state.individual_configs[idx] = {
                 "main_title": st.session_state.custom_main_title,
                 "sub_title": st.session_state.custom_sub_title,
                 "tag_text": st.session_state.custom_tag_text,
-                "colors": global_colors_config.copy()
+                "colors": global_colors_config.copy(),
+                "background": global_background_config.copy()
             }
+            st.session_state.individual_configs[idx]["background"]["bg_seed"] = st.session_state.random_seed + idx
         
         cfg = st.session_state.individual_configs[idx]
+        if "background" not in cfg:
+            cfg["background"] = global_background_config.copy()
+            cfg["background"]["bg_seed"] = st.session_state.random_seed + idx
+
+        canvas, img_width, img_height = create_background_canvas(cfg["background"], idx, icon_hue)
 
         render_function = TEMPLATE_REGISTRY[template_choice]
         if template_choice == "模板2：经典UA流":
@@ -737,13 +772,24 @@ with col_right:
                         st.image(img_buffer, caption=f"卡片 {global_idx+1}{status_label}", use_container_width=True)
                         
                         # 📍 [UI名称修改点] 批量列表下的单张下载按钮名称
-                        st.download_button(
-                            label=f"下载卡片 {global_idx+1}", 
-                            data=img_bytes, 
-                            file_name=f"ad_layout_{global_idx+1}.png", 
-                            mime="image/png",
-                            key=f"dl_grid_btn_{global_idx}"
-                        )
+                        dl_col, lock_col = st.columns([5, 1])
+                        with dl_col:
+                            st.download_button(
+                                label=f"下载卡片 {global_idx+1}", 
+                                data=img_bytes, 
+                                file_name=f"ad_layout_{global_idx+1}.png", 
+                                mime="image/png",
+                                key=f"dl_grid_btn_{global_idx}",
+                                use_container_width=True
+                            )
+                        with lock_col:
+                            lock_label = "🔒" if global_idx in st.session_state.forked_cards else "🔓"
+                            if st.button(lock_label, key=f"grid_lock_{global_idx}", help="锁定后不再受左侧批量设置影响", use_container_width=True):
+                                if global_idx in st.session_state.forked_cards:
+                                    st.session_state.forked_cards.remove(global_idx)
+                                else:
+                                    st.session_state.forked_cards.add(global_idx)
+                                st.rerun()
 
         # 🖼️ 模式 B：单张精细微调
         else:
@@ -776,6 +822,18 @@ with col_right:
                         # 📍 [UI名称修改点] 单独配置小表单标题
                         st.markdown(f"**进行单独微调 (卡片 {idx+1})**")
                         current_cfg = st.session_state.individual_configs[idx]
+                        lock_text = "已锁定，不受左侧批量设置影响" if idx in st.session_state.forked_cards else "未锁定，会跟随左侧批量设置"
+                        lock_action = "解锁当前图片" if idx in st.session_state.forked_cards else "锁定当前图片"
+                        lock_col_a, lock_col_b = st.columns([3, 2])
+                        with lock_col_a:
+                            st.caption(lock_text)
+                        with lock_col_b:
+                            if st.button(lock_action, key=f"individual_lock_{idx}", use_container_width=True):
+                                if idx in st.session_state.forked_cards:
+                                    st.session_state.forked_cards.remove(idx)
+                                else:
+                                    st.session_state.forked_cards.add(idx)
+                                st.rerun()
                         
                         if "模板2" in template_choice:
                             # 📍 [UI名称修改点] 单独改动文字框组件名
@@ -798,6 +856,46 @@ with col_right:
               
                             st.session_state.individual_configs[idx]["colors"]["main"] = c_m
                             st.session_state.individual_configs[idx]["colors"]["sub"] = c_s
+
+                        with st.expander("单张背景设置", expanded=False):
+                            current_bg_cfg = current_cfg.get("background", global_background_config.copy())
+                            bg_options = ["纯白背景", "AI智能渐变生成", "上传背景图"]
+                            current_bg_source = current_bg_cfg.get("bg_source", "纯白背景")
+                            if current_bg_source not in bg_options:
+                                current_bg_source = "纯白背景"
+                            new_bg_source = st.radio(
+                                "独立背景来源：",
+                                bg_options,
+                                index=bg_options.index(current_bg_source),
+                                key=f"individual_bg_source_{idx}"
+                            )
+                            new_bg_type = current_bg_cfg.get("bg_type", "同色清爽渐变")
+                            if new_bg_source == "AI智能渐变生成":
+                                gradient_options = ["同色清爽渐变", "多色梦幻渐变"]
+                                if new_bg_type not in gradient_options:
+                                    new_bg_type = "同色清爽渐变"
+                                new_bg_type = st.selectbox(
+                                    "独立渐变美学风格：",
+                                    gradient_options,
+                                    index=gradient_options.index(new_bg_type),
+                                    key=f"individual_bg_type_{idx}"
+                                )
+                            new_bg_upload = None
+                            if new_bg_source == "上传背景图":
+                                new_bg_upload = st.file_uploader(
+                                    "上传当前图片专用背景：",
+                                    type=["png", "jpg", "jpeg"],
+                                    key=f"individual_bg_upload_{idx}"
+                                )
+                            bg_image_bytes = current_bg_cfg.get("bg_image_bytes")
+                            if new_bg_upload is not None:
+                                bg_image_bytes = new_bg_upload.getvalue()
+                            st.session_state.individual_configs[idx]["background"] = {
+                                "bg_source": new_bg_source,
+                                "bg_type": new_bg_type,
+                                "bg_image_bytes": bg_image_bytes if new_bg_source == "上传背景图" else None,
+                                "bg_seed": current_bg_cfg.get("bg_seed", st.session_state.random_seed + idx)
+                            }
                           
                         # 📍 [UI名称修改点] 应用独立改动的确认按钮
                         if st.button("保存当前微调", key=f"apply_individual_{idx}"):
@@ -819,8 +917,12 @@ with col_right:
                         st.session_state.custom_main_title = default_main
                         st.session_state.custom_sub_title = MAIN_SUB_COPYWRITING_POOL[default_main]
                 
-                st.session_state.individual_configs = {}
-                st.session_state.forked_cards = set()
+                locked_configs = {
+                    card_idx: cfg
+                    for card_idx, cfg in st.session_state.individual_configs.items()
+                    if card_idx in st.session_state.forked_cards
+                }
+                st.session_state.individual_configs = locked_configs
                 st.session_state.is_shuffled = True
                 
             # 📍 [UI名称修改点] 全局一键随机重洗按钮
