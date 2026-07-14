@@ -527,6 +527,60 @@ TEMPLATE_REGISTRY = {
     "模板4：app模拟类": render_template_4
 }
 
+@st.cache_data(show_spinner=False, max_entries=128)
+def render_card_png_bytes(
+    icon_bytes,
+    idx,
+    card_seed,
+    template_choice,
+    bold_font_path,
+    regular_font_path,
+    main_title,
+    sub_title,
+    tag_text,
+    colors_items,
+    bg_source,
+    bg_type,
+    bg_image_bytes,
+    bg_seed
+):
+    random.seed(card_seed)
+    icon_src = Image.open(io.BytesIO(icon_bytes)).convert("RGBA")
+
+    try:
+        color_thief = ColorThief(io.BytesIO(icon_bytes))
+        raw_rgb = color_thief.get_color(quality=1)
+        icon_hue, icon_l, icon_s = colorsys.rgb_to_hls(raw_rgb[0]/255.0, raw_rgb[1]/255.0, raw_rgb[2]/255.0)
+    except:
+        raw_rgb = (230, 45, 45)
+        icon_hue = 0.0
+
+    try:
+        font_main = ImageFont.truetype(bold_font_path, 72)
+        sub_font = ImageFont.truetype(regular_font_path, 44)
+    except:
+        font_main = ImageFont.load_default()
+        sub_font = ImageFont.load_default()
+
+    colors = dict(colors_items)
+    bg_config = {
+        "bg_source": bg_source,
+        "bg_type": bg_type,
+        "bg_image_bytes": bg_image_bytes,
+        "bg_seed": bg_seed
+    }
+    canvas, img_width, img_height = create_background_canvas(bg_config, idx, icon_hue)
+
+    render_function = TEMPLATE_REGISTRY[template_choice]
+    if template_choice == "模板2：经典UA流":
+        canvas = render_template_2(canvas, icon_src, main_title, sub_title, font_main, sub_font, raw_rgb, colors, tag_text)
+    else:
+        canvas = render_function(canvas, icon_src, main_title, sub_title, font_main, sub_font, raw_rgb, colors)
+
+    img_buffer = io.BytesIO()
+    canvas.save(img_buffer, format="PNG")
+    return img_buffer.getvalue()
+
 
 # ====================================================================
 # 🌐 3. 前端 UI 渲染（左侧操作区，右侧预览区格局）
@@ -665,25 +719,7 @@ if uploaded_icons:
     if not os.path.exists(chosen_bold_path): chosen_bold_path = chosen_bold_path.replace(".ttf", ".otf")
     if not os.path.exists(chosen_regular_path): chosen_regular_path = chosen_regular_path.replace(".ttf", ".otf")
 
-    try:
-        font_main = ImageFont.truetype(chosen_bold_path, 72)
-        sub_font = ImageFont.truetype(chosen_regular_path, 44)
-    except:
-        font_main = ImageFont.load_default()
-        sub_font = ImageFont.load_default()
-
     for idx, single_icon in enumerate(uploaded_icons):
-        random.seed(st.session_state.random_seed + idx)  
-        icon_src = Image.open(single_icon).convert("RGBA")
-     
-        try:
-            color_thief = ColorThief(single_icon)
-            raw_rgb = color_thief.get_color(quality=1)
-            icon_hue, icon_l, icon_s = colorsys.rgb_to_hls(raw_rgb[0]/255.0, raw_rgb[1]/255.0, raw_rgb[2]/255.0)
-        except:
-            raw_rgb = (230, 45, 45)
-            icon_hue = 0.0
-
         default_card_config = {
             "main_title": st.session_state.custom_main_title,
             "sub_title": st.session_state.custom_sub_title,
@@ -710,13 +746,26 @@ if uploaded_icons:
             cfg["background"] = global_background_config.copy()
             cfg["background"]["bg_seed"] = st.session_state.random_seed + idx
 
-        canvas, img_width, img_height = create_background_canvas(cfg["background"], idx, icon_hue)
-
-        render_function = TEMPLATE_REGISTRY[template_choice]
-        if template_choice == "模板2：经典UA流":
-            canvas = render_template_2(canvas, icon_src, cfg["main_title"], cfg["sub_title"], font_main, sub_font, raw_rgb, cfg["colors"], cfg["tag_text"])
-        else:
-            canvas = render_function(canvas, icon_src, cfg["main_title"], cfg["sub_title"], font_main, sub_font, raw_rgb, cfg["colors"])
+        icon_bytes = single_icon.getvalue()
+        bg_cfg = cfg.get("background", global_background_config.copy())
+        card_seed = bg_cfg.get("bg_seed", st.session_state.random_seed + idx)
+        rendered_png = render_card_png_bytes(
+            icon_bytes,
+            idx,
+            card_seed,
+            template_choice,
+            chosen_bold_path,
+            chosen_regular_path,
+            cfg["main_title"],
+            cfg["sub_title"],
+            cfg["tag_text"],
+            tuple(sorted(cfg["colors"].items())),
+            bg_cfg.get("bg_source", "纯白背景"),
+            bg_cfg.get("bg_type", "同色清爽渐变"),
+            bg_cfg.get("bg_image_bytes"),
+            card_seed
+        )
+        canvas = Image.open(io.BytesIO(rendered_png)).convert("RGB").copy()
 
         generated_canvases.append((single_icon.name, canvas))
 
