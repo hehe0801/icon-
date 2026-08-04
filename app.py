@@ -155,6 +155,13 @@ if 'individual_control_versions' not in st.session_state:
 if 'edit_view_mode' not in st.session_state:
     st.session_state.edit_view_mode = "批量预览模式"
 
+if 'fast_preview_mode' not in st.session_state:
+    st.session_state.fast_preview_mode = True
+if 'prepare_hd_downloads' not in st.session_state:
+    st.session_state.prepare_hd_downloads = False
+if 'last_render_signature' not in st.session_state:
+    st.session_state.last_render_signature = None
+
 
 # ==================== 2. 全局独立辅助工具 ====================
 def mask_rounded_rectangle(img, radius):
@@ -172,6 +179,21 @@ def get_image_main_hue(image_path):
         return h
     except:
         return 0.0
+
+@st.cache_data(show_spinner=False, max_entries=256)
+def get_cached_image_main_hue(image_path, modified_time):
+    return get_image_main_hue(image_path)
+
+@st.cache_data(show_spinner=False, max_entries=128)
+def load_background_png_bytes(image_path, modified_time, target_size=None):
+    with open(image_path, "rb") as f_img:
+        with Image.open(f_img) as bg_img:
+            canvas = bg_img.convert("RGB")
+            if target_size is not None:
+                canvas = canvas.resize(target_size, Image.Resampling.LANCZOS)
+            img_buffer = io.BytesIO()
+            canvas.save(img_buffer, format="PNG", compress_level=1)
+            return img_buffer.getvalue()
 
 def sanitize_filename(name):
     invalid_chars = '<>:"/\\|?*'
@@ -198,16 +220,17 @@ def create_background_canvas(bg_config, idx, icon_hue):
         if t4_files:
             similar_bgs = []
             for f in t4_files:
-                bg_hue = get_image_main_hue(os.path.join(T4_DIR, f))
+                bg_path = os.path.join(T4_DIR, f)
+                bg_hue = get_cached_image_main_hue(bg_path, os.path.getmtime(bg_path))
                 if min(abs(bg_hue - icon_hue), 1.0 - abs(bg_hue - icon_hue)) < 0.15:
                     similar_bgs.append(f)
             if similar_bgs and random.random() < 0.7:
                 chosen_bg = random.choice(similar_bgs)
             else:
                 chosen_bg = random.choice(t4_files)
-            with open(os.path.join(T4_DIR, chosen_bg), "rb") as f_img:
-                with Image.open(f_img) as bg_img:
-                    canvas = bg_img.convert("RGB").copy()
+            bg_path = os.path.join(T4_DIR, chosen_bg)
+            bg_bytes = load_background_png_bytes(bg_path, os.path.getmtime(bg_path))
+            canvas = Image.open(io.BytesIO(bg_bytes)).convert("RGB").copy()
             return canvas, canvas.size[0], canvas.size[1]
         return Image.new("RGB", (img_width, img_height), color=(255, 255, 255)), img_width, img_height
 
@@ -223,9 +246,9 @@ def create_background_canvas(bg_config, idx, icon_hue):
         bg_files = [f for f in os.listdir(bg_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
         if bg_files:
             chosen_bg_name = bg_files[(st.session_state.random_seed + idx) % len(bg_files)]
-            with open(os.path.join(bg_dir, chosen_bg_name), "rb") as f_img:
-                with Image.open(f_img) as bg_img:
-                    canvas = bg_img.convert("RGB").resize((img_width, img_height), Image.Resampling.LANCZOS).copy()
+            bg_path = os.path.join(bg_dir, chosen_bg_name)
+            bg_bytes = load_background_png_bytes(bg_path, os.path.getmtime(bg_path), (img_width, img_height))
+            canvas = Image.open(io.BytesIO(bg_bytes)).convert("RGB").copy()
             return canvas, img_width, img_height
         return Image.new("RGB", (img_width, img_height), color=(255, 255, 255)), img_width, img_height
 
@@ -255,6 +278,7 @@ def create_background_canvas(bg_config, idx, icon_hue):
     return Image.new("RGB", (img_width, img_height), color=(255, 255, 255)), img_width, img_height
 
 def mark_card_independent(idx):
+    st.session_state.prepare_hd_downloads = False
     if idx not in st.session_state.forked_cards:
         st.session_state.forked_cards.add(idx)
         return True
@@ -528,13 +552,18 @@ def render_template_4(canvas, icon_src, main_title, sub_title, font_main, sub_fo
     SUB_FONT_SIZE = int(img_width * 0.07)   
     SUB_TITLE_OFFSET_Y = 76             
      
-    np_img = np.array(canvas.convert("RGB"))
+    detect_scale = 0.25
+    detect_size = (max(1, int(img_width * detect_scale)), max(1, int(img_height * detect_scale)))
+    detect_canvas = canvas.convert("RGB").resize(detect_size, Image.Resampling.BILINEAR)
+    np_img = np.array(detect_canvas)
     white_mask = (np_img[:, :, 0] > 242) & (np_img[:, :, 1] > 242) & (np_img[:, :, 2] > 242)
     y_indices, x_indices = np.where(white_mask)
   
-    if len(y_indices) > 500 and len(x_indices) > 500:
-        x_min, x_max = int(np.min(x_indices)), int(np.max(x_indices))
-        y_min, y_max = int(np.min(y_indices)), int(np.max(y_indices))
+    if len(y_indices) > 50 and len(x_indices) > 50:
+        x_min = max(0, int(np.min(x_indices) / detect_scale))
+        x_max = min(img_width - 1, int(np.max(x_indices) / detect_scale))
+        y_min = max(0, int(np.min(y_indices) / detect_scale))
+        y_max = min(img_height - 1, int(np.max(y_indices) / detect_scale))
         
         box_w = x_max - x_min + 1
         box_h = y_max - y_min + 1
@@ -587,6 +616,7 @@ def render_card_png_bytes(
     icon_bytes,
     idx,
     card_seed,
+    output_width,
     template_choice,
     bold_font_path,
     regular_font_path,
@@ -632,8 +662,13 @@ def render_card_png_bytes(
     else:
         canvas = render_function(canvas, icon_src, main_title, sub_title, font_main, sub_font, raw_rgb, colors)
 
+    if output_width and output_width < canvas.size[0]:
+        output_height = int(canvas.size[1] * output_width / canvas.size[0])
+        canvas = canvas.resize((output_width, output_height), Image.Resampling.LANCZOS)
+
     img_buffer = io.BytesIO()
-    canvas.save(img_buffer, format="PNG")
+    compress_level = 1 if output_width and output_width < 1280 else 6
+    canvas.save(img_buffer, format="PNG", compress_level=compress_level)
     return img_buffer.getvalue()
 
 
@@ -686,6 +721,12 @@ with col_left:
     uploaded_icons = uploaded_icons[:9]
     if uploaded_icons:
         st.success(f"已载入 {len(uploaded_icons)} 张 Icon")
+
+    st.session_state.fast_preview_mode = st.toggle(
+        "快速预览模式",
+        value=st.session_state.fast_preview_mode,
+        help="开启后预览图使用较低画质，页面响应更快；导出前再准备高清图。"
+    )
 
     # 📍 [UI名称修改点] 步骤三：背景画布设置
     st.header("3. 背景画布设置")
@@ -779,11 +820,31 @@ with col_left:
             global_colors_config["main"] = c1.color_picker("宣传语第一行", "#000000")
             global_colors_config["sub"] = c2.color_picker("宣传语第二行", "#000000")
 
+current_render_signature = (
+    template_choice,
+    style_choice,
+    st.session_state.fast_preview_mode,
+    st.session_state.copywriting_mode,
+    st.session_state.batch_game_name,
+    st.session_state.batch_promo_text,
+    st.session_state.custom_main_title,
+    st.session_state.custom_sub_title,
+    tuple(sorted(global_colors_config.items())),
+    global_background_config.get("bg_source"),
+    global_background_config.get("bg_type"),
+    len(global_background_config.get("bg_image_bytes") or b""),
+    tuple((file.name, getattr(file, "size", 0)) for file in uploaded_icons)
+)
+if st.session_state.last_render_signature is not None and current_render_signature != st.session_state.last_render_signature:
+    st.session_state.prepare_hd_downloads = False
+st.session_state.last_render_signature = current_render_signature
+
 
 # ====================================================================
 # ⚙️ 4. 后端中央核心逻辑与渲染处理（保持逻辑完好不变）
 # ====================================================================
 generated_canvases = []  
+hd_image_bytes_list = []
 
 if uploaded_icons:
     font_map = {
@@ -835,7 +896,7 @@ if uploaded_icons:
         icon_bytes = single_icon.getvalue()
         bg_cfg = cfg.get("background", global_background_config.copy())
         card_seed = bg_cfg.get("bg_seed", st.session_state.random_seed + idx)
-        rendered_png = render_card_png_bytes(
+        render_args = (
             icon_bytes,
             idx,
             card_seed,
@@ -851,39 +912,76 @@ if uploaded_icons:
             bg_cfg.get("bg_image_bytes"),
             card_seed
         )
+        preview_width = 640 if st.session_state.fast_preview_mode else 1280
+        rendered_png = render_card_png_bytes(
+            icon_bytes,
+            idx,
+            card_seed,
+            preview_width,
+            template_choice,
+            chosen_bold_path,
+            chosen_regular_path,
+            cfg["main_title"],
+            cfg["sub_title"],
+            cfg["tag_text"],
+            tuple(sorted(cfg["colors"].items())),
+            bg_cfg.get("bg_source", "纯白背景"),
+            bg_cfg.get("bg_type", "同色清爽渐变"),
+            bg_cfg.get("bg_image_bytes"),
+            card_seed
+        )
         canvas = Image.open(io.BytesIO(rendered_png)).convert("RGB").copy()
 
-        generated_canvases.append((single_icon.name, canvas))
+        generated_canvases.append((single_icon.name, canvas, render_args))
+
+        if st.session_state.prepare_hd_downloads:
+            hd_png = render_card_png_bytes(*render_args[:3], 1280, *render_args[3:])
+            hd_image_bytes_list.append(hd_png)
 
 
 # ==================== 5. 右侧渲染结果展示（2K 弹性工作区） ====================
 with col_right:
     # 📍 [UI名称修改点] 工作台主标题
-    st.markdown("### 高清预览图")
+    st.markdown("### 效果预览图")
     
     if uploaded_icons and generated_canvases:
         # 📍 [UI名称修改点] 步骤五主标题
         st.header("生成结果控制")
 
-        zip_buffer = io.BytesIO()
         safe_template_name = sanitize_filename(template_choice)
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-            for idx, (_, current_canvas) in enumerate(generated_canvases, start=1):
-                img_buffer = io.BytesIO()
-                current_canvas.save(img_buffer, format="PNG")
-                zip_file.writestr(f"{idx:02d}_{safe_template_name}.png", img_buffer.getvalue())
 
         st.markdown(
             f"""
             <div class="result-toolbar">
                 <div class="result-toolbar-title">已生成 {len(generated_canvases)} 张图片</div>
-                <div class="result-toolbar-desc">当前模板：{template_choice}。可单张下载，也可一键打包下载全部 PNG。</div>
+                <div class="result-toolbar-desc">当前模板：{template_choice}。默认显示快速预览，需要导出时再准备高清下载文件。</div>
             </div>
             """,
             unsafe_allow_html=True
         )
-        download_col, zip_note_col = st.columns([5, 3])
-        with download_col:
+
+        control_col1, control_col2, control_col3 = st.columns([3, 3, 3])
+        with control_col1:
+            preview_status = "快速预览中" if st.session_state.fast_preview_mode else "高清预览中"
+            st.caption(preview_status)
+        with control_col2:
+            if st.button("准备高清下载", use_container_width=True):
+                st.session_state.prepare_hd_downloads = True
+                st.rerun()
+        with control_col3:
+            if st.session_state.prepare_hd_downloads:
+                if st.button("回到快速预览", use_container_width=True):
+                    st.session_state.prepare_hd_downloads = False
+                    st.rerun()
+            else:
+                st.caption("高清下载未准备")
+
+        if st.session_state.prepare_hd_downloads and hd_image_bytes_list:
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                for idx, img_bytes in enumerate(hd_image_bytes_list, start=1):
+                    zip_file.writestr(f"{idx:02d}_{safe_template_name}.png", img_bytes)
+
             st.download_button(
                 label="一键下载全部图片 ZIP",
                 data=zip_buffer.getvalue(),
@@ -892,8 +990,9 @@ with col_right:
                 use_container_width=True,
                 key="download_all_zip"
             )
-        with zip_note_col:
             st.caption("压缩包内命名：01_模板名.png")
+        else:
+            st.info("当前为快速预览。需要导出原尺寸图片时，请先点击“准备高清下载”。")
           
         # 📍 [UI名称修改点] 单选切换模式的文字名称
         st.session_state.edit_view_mode = st.radio(
@@ -912,12 +1011,12 @@ with col_right:
             for i in range(0, total_images, grid_cols_count):
                 chunk = generated_canvases[i:i+grid_cols_count]
                 columns = st.columns(grid_cols_count)
-                for col_idx, (name, current_canvas) in enumerate(chunk):
+                for col_idx, (name, current_canvas, render_args) in enumerate(chunk):
                     global_idx = i + col_idx
                     
                     with columns[col_idx]:
                         img_buffer = io.BytesIO()
-                        current_canvas.save(img_buffer, format="PNG")
+                        current_canvas.save(img_buffer, format="PNG", compress_level=1)
                         img_bytes = img_buffer.getvalue()
                       
                         status_label = " (已独立微调)" if global_idx in st.session_state.forked_cards else " (全局同步)"
@@ -926,17 +1025,20 @@ with col_right:
                         # 📍 [UI名称修改点] 批量列表下的单张下载按钮名称
                         dl_col, lock_col = st.columns([5, 1])
                         with dl_col:
+                            download_ready = st.session_state.prepare_hd_downloads and global_idx < len(hd_image_bytes_list)
                             st.download_button(
-                                label=f"下载卡片 {global_idx+1}", 
-                                data=img_bytes, 
+                                label=f"下载卡片 {global_idx+1}" if download_ready else "先准备高清", 
+                                data=hd_image_bytes_list[global_idx] if download_ready else b"", 
                                 file_name=f"ad_layout_{global_idx+1}.png", 
                                 mime="image/png",
                                 key=f"dl_grid_btn_{global_idx}",
-                                use_container_width=True
+                                use_container_width=True,
+                                disabled=not download_ready
                             )
                         with lock_col:
                             lock_label = "🔒" if global_idx in st.session_state.forked_cards else "🔓"
                             if st.button(lock_label, key=f"grid_lock_{global_idx}", help="锁定后不再受左侧批量设置影响", use_container_width=True):
+                                st.session_state.prepare_hd_downloads = False
                                 if global_idx in st.session_state.forked_cards:
                                     st.session_state.forked_cards.remove(global_idx)
                                     reset_individual_controls(global_idx)
@@ -947,14 +1049,14 @@ with col_right:
         # 🖼️ 模式 B：单张精细微调
         else:
             # 📍 [UI名称修改点] 标签分类卡命名格式
-            tabs = st.tabs([f"卡片 {i+1}" for i, (name, _) in enumerate(generated_canvases)])
+            tabs = st.tabs([f"卡片 {i+1}" for i, (name, _, __) in enumerate(generated_canvases)])
 
             for idx, tab in enumerate(tabs):
                 with tab:
-                    filename, current_canvas = generated_canvases[idx]
+                    filename, current_canvas, render_args = generated_canvases[idx]
                     
                     img_buffer = io.BytesIO()
-                    current_canvas.save(img_buffer, format="PNG")
+                    current_canvas.save(img_buffer, format="PNG", compress_level=1)
                     img_bytes = img_buffer.getvalue()
 
                     preview_col, edit_col = st.columns([5, 5])
@@ -963,12 +1065,14 @@ with col_right:
                         st.image(img_buffer, caption=f"实时渲染图 {idx+1}", width=340)
                         
                         # 📍 [UI名称修改点] 独享控制台下的导出按钮
+                        download_ready = st.session_state.prepare_hd_downloads and idx < len(hd_image_bytes_list)
                         st.download_button(
-                            label=f"导出当前图片", 
-                            data=img_bytes, 
+                            label=f"导出当前图片" if download_ready else "先准备高清下载", 
+                            data=hd_image_bytes_list[idx] if download_ready else b"", 
                             file_name=f"ad_layout_individual_{idx+1}.png", 
                             mime="image/png",
-                            key=f"dl_btn_{idx}"
+                            key=f"dl_btn_{idx}",
+                            disabled=not download_ready
                         )
 
                     with edit_col:
@@ -982,6 +1086,7 @@ with col_right:
                             st.caption(lock_text)
                         with lock_col_b:
                             if st.button(lock_action, key=f"individual_lock_{idx}", use_container_width=True):
+                                st.session_state.prepare_hd_downloads = False
                                 if idx in st.session_state.forked_cards:
                                     st.session_state.forked_cards.remove(idx)
                                     reset_individual_controls(idx)
@@ -1091,6 +1196,7 @@ with col_right:
         
         with btn_col2:
             def do_change_seed():
+                st.session_state.prepare_hd_downloads = False
                 if not st.session_state.lock_background:
                     st.session_state.random_seed = random.randint(0, 99999)
                 
