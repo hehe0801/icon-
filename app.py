@@ -131,6 +131,13 @@ if 'custom_sub_title' not in st.session_state:
 if 'custom_tag_text' not in st.session_state:
     st.session_state.custom_tag_text = "App Store"
 
+if 'copywriting_mode' not in st.session_state:
+    st.session_state.copywriting_mode = "单组文案应用全部图片"
+if 'batch_game_name' not in st.session_state:
+    st.session_state.batch_game_name = st.session_state.custom_tag_text
+if 'batch_promo_text' not in st.session_state:
+    st.session_state.batch_promo_text = f"{st.session_state.custom_main_title}\n{st.session_state.custom_sub_title}"
+
 if 'lock_copywriting' not in st.session_state:
     st.session_state.lock_copywriting = False
 if 'lock_background' not in st.session_state:
@@ -260,6 +267,54 @@ def reset_individual_controls(idx):
 def individual_key(name, idx):
     version = st.session_state.individual_control_versions.get(idx, 0)
     return f"{name}_{idx}_{version}"
+
+def get_template_promo_line_count(template_choice):
+    if "模板4" in template_choice:
+        return 1
+    return 2
+
+def parse_promo_groups(promo_text, line_count):
+    lines = [line.strip() for line in promo_text.splitlines() if line.strip()]
+    if not lines:
+        return []
+
+    groups = []
+    for start in range(0, len(lines), line_count):
+        chunk = lines[start:start + line_count]
+        if line_count == 1:
+            groups.append((chunk[0], ""))
+        else:
+            first_line = chunk[0]
+            second_line = chunk[1] if len(chunk) > 1 else ""
+            groups.append((first_line, second_line))
+    return groups
+
+def get_copywriting_for_card(idx, template_choice, mode, game_name, single_main, single_sub, promo_groups):
+    if mode == "智能批量宣传语" and promo_groups:
+        group_idx = min(idx, len(promo_groups) - 1)
+        promo_line_1, promo_line_2 = promo_groups[group_idx]
+    else:
+        promo_line_1, promo_line_2 = single_main, single_sub
+
+    if "模板2" in template_choice:
+        return {
+            "main_title": promo_line_1,
+            "sub_title": promo_line_2,
+            "tag_text": game_name
+        }
+
+    if "模板4" in template_choice:
+        return {
+            "main_title": promo_line_1,
+            "sub_title": game_name,
+            "tag_text": game_name
+        }
+
+    return {
+        "main_title": promo_line_1,
+        "sub_title": promo_line_2,
+        "tag_text": game_name
+    }
 
 MAIN_SUB_COPYWRITING_POOL = {
     "和对象第一次玩到三点": "发现得有点晚，但体验很不错",
@@ -606,7 +661,7 @@ with col_left:
         "模板1：质感大icon": ("和对象第一次玩到凌晨", "这游戏也太解压了吧！"),
         "模板2：经典小icon": ("这款游戏！", "ios终于能玩啦！！"),
         "模板3：极简吸睛流": ("我的无聊救星", "莫名其妙就玩了一整天"),
-        "模板4：app模拟1": ("为低精力人设计的游戏", "这里改名字")
+        "模板4：app模拟类": ("为低精力人设计的游戏", "这里改名字")
     }
 
     if not st.session_state.lock_copywriting:
@@ -665,42 +720,64 @@ with col_left:
     st.session_state.lock_copywriting = st.toggle("锁定当前文字文案", value=st.session_state.lock_copywriting)
     
     global_colors_config = {"tag": "#000000", "main": "#000000", "sub": "#000000"}
-    
-    if "模板2" in template_choice:
-        global_tag_text = st.text_input("批量-下方小字：", value=st.session_state.custom_tag_text)
-        st.session_state.custom_tag_text = global_tag_text
-        global_main_title = st.text_input("批量-主宣传语（第一排）：", value=st.session_state.custom_main_title)
+    promo_line_count = get_template_promo_line_count(template_choice)
+    promo_hint = "当前模板会按每张 1 行宣传语解析。" if promo_line_count == 1 else "当前模板会按每张 2 行宣传语解析，可直接粘贴 AI 生成的整段文案。"
+
+    global_game_name = st.text_input("游戏名：", value=st.session_state.batch_game_name)
+    st.session_state.batch_game_name = global_game_name
+    st.session_state.custom_tag_text = global_game_name
+
+    copywriting_modes = ["单组文案应用全部图片", "智能批量宣传语"]
+    st.session_state.copywriting_mode = st.radio(
+        "文案应用方式：",
+        copywriting_modes,
+        index=copywriting_modes.index(st.session_state.copywriting_mode) if st.session_state.copywriting_mode in copywriting_modes else 0,
+        horizontal=True
+    )
+
+    if st.session_state.copywriting_mode == "智能批量宣传语":
+        st.caption(promo_hint)
+        batch_promo_text = st.text_area(
+            "批量宣传语：",
+            value=st.session_state.batch_promo_text,
+            height=180,
+            placeholder="直接粘贴 AI 生成的整段文案"
+        )
+        st.session_state.batch_promo_text = batch_promo_text
+        promo_groups = parse_promo_groups(batch_promo_text, promo_line_count)
+        if uploaded_icons:
+            st.caption(f"已解析 {len(promo_groups)} 组宣传语，将按上传顺序匹配 {len(uploaded_icons)} 张 Icon。")
+    else:
+        if "模板4" in template_choice:
+            global_main_title = st.text_input("宣传语：", value=st.session_state.custom_main_title)
+            global_sub_title = global_game_name
+        else:
+            global_main_title = st.text_input("宣传语第一行：", value=st.session_state.custom_main_title)
+            global_sub_title = st.text_input("宣传语第二行：", value=st.session_state.custom_sub_title)
         st.session_state.custom_main_title = global_main_title
-        global_sub_title = st.text_input("批量-副宣传语（第二排）：", value=st.session_state.custom_sub_title)
         st.session_state.custom_sub_title = global_sub_title
-        
-        # 使用 Expander 包裹实现分层灰底色块
+        if "模板4" in template_choice:
+            st.session_state.batch_promo_text = global_main_title.strip()
+        else:
+            st.session_state.batch_promo_text = f"{global_main_title}\n{global_sub_title}".strip()
+        promo_groups = []
+
+    if "模板2" in template_choice:
         with st.expander("文字配色管理", expanded=True):
             c1, c2, c3 = st.columns(3)
-            global_colors_config["tag"] = c1.color_picker("标签颜色", "#000000")
-            global_colors_config["main"] = c2.color_picker("主标颜色", "#000000")
-            global_colors_config["sub"] = c3.color_picker("副标颜色", "#000000")
-            
+            global_colors_config["tag"] = c1.color_picker("游戏名颜色", "#000000")
+            global_colors_config["main"] = c2.color_picker("宣传语第一行", "#000000")
+            global_colors_config["sub"] = c3.color_picker("宣传语第二行", "#000000")
     elif "模板4" in template_choice:
-        global_main_title = st.text_input("批量-上方宣传文案：", value=st.session_state.custom_main_title)
-        st.session_state.custom_main_title = global_main_title
-        global_sub_title = st.text_input("批量-下方小字文案：", value=st.session_state.custom_sub_title)
-        st.session_state.custom_sub_title = global_sub_title
-       
         with st.expander("文字配色管理", expanded=True):
             c1, c2 = st.columns(2)
-            global_colors_config["main"] = c1.color_picker("上方大字", "#FFFFFF")
-            global_colors_config["sub"] = c2.color_picker("下方小字", "#FFFFFF")
+            global_colors_config["main"] = c1.color_picker("宣传语", "#FFFFFF")
+            global_colors_config["sub"] = c2.color_picker("游戏名", "#FFFFFF")
     else:
-        global_main_title = st.text_input("批量-主宣传语（第一排）：", value=st.session_state.custom_main_title)
-        st.session_state.custom_main_title = global_main_title
-        global_sub_title = st.text_input("批量-副宣传语（第二排）：", value=st.session_state.custom_sub_title)
-        st.session_state.custom_sub_title = global_sub_title
-        
         with st.expander("文字配色管理", expanded=True):
             c1, c2 = st.columns(2)
-            global_colors_config["main"] = c1.color_picker("第一排文字", "#000000")
-            global_colors_config["sub"] = c2.color_picker("第二排文字", "#000000")
+            global_colors_config["main"] = c1.color_picker("宣传语第一行", "#000000")
+            global_colors_config["sub"] = c2.color_picker("宣传语第二行", "#000000")
 
 
 # ====================================================================
@@ -720,10 +797,19 @@ if uploaded_icons:
     if not os.path.exists(chosen_regular_path): chosen_regular_path = chosen_regular_path.replace(".ttf", ".otf")
 
     for idx, single_icon in enumerate(uploaded_icons):
+        card_copy = get_copywriting_for_card(
+            idx,
+            template_choice,
+            st.session_state.copywriting_mode,
+            st.session_state.batch_game_name,
+            st.session_state.custom_main_title,
+            st.session_state.custom_sub_title,
+            promo_groups
+        )
         default_card_config = {
-            "main_title": st.session_state.custom_main_title,
-            "sub_title": st.session_state.custom_sub_title,
-            "tag_text": st.session_state.custom_tag_text,
+            "main_title": card_copy["main_title"],
+            "sub_title": card_copy["sub_title"],
+            "tag_text": card_copy["tag_text"],
             "colors": global_colors_config.copy(),
             "background": global_background_config.copy()
         }
@@ -733,9 +819,9 @@ if uploaded_icons:
             st.session_state.individual_configs[idx] = default_card_config
         elif idx not in st.session_state.forked_cards:
             st.session_state.individual_configs[idx] = {
-                "main_title": st.session_state.custom_main_title,
-                "sub_title": st.session_state.custom_sub_title,
-                "tag_text": st.session_state.custom_tag_text,
+                "main_title": card_copy["main_title"],
+                "sub_title": card_copy["sub_title"],
+                "tag_text": card_copy["tag_text"],
                 "colors": global_colors_config.copy(),
                 "background": global_background_config.copy()
             }
@@ -905,13 +991,23 @@ with col_right:
                         
                         if "模板2" in template_choice:
                             # 📍 [UI名称修改点] 单独改动文字框组件名
-                            new_tag = st.text_input("独立小字：", value=current_cfg["tag_text"], key=individual_key("individual_tag", idx))
+                            new_tag = st.text_input("独立游戏名：", value=current_cfg["tag_text"], key=individual_key("individual_tag", idx))
                             if new_tag != current_cfg["tag_text"]:
                                 mark_card_independent(idx)
                             st.session_state.individual_configs[idx]["tag_text"] = new_tag
-                    
-                        new_main = st.text_input("独立主标题：", value=current_cfg["main_title"], key=individual_key("individual_main", idx))
-                        new_sub = st.text_input("独立副标题：", value=current_cfg["sub_title"], key=individual_key("individual_sub", idx))
+                        elif "模板4" in template_choice:
+                            new_game_name = st.text_input("独立游戏名：", value=current_cfg["sub_title"], key=individual_key("individual_game_name", idx))
+                            if new_game_name != current_cfg["sub_title"]:
+                                mark_card_independent(idx)
+                            st.session_state.individual_configs[idx]["sub_title"] = new_game_name
+                            st.session_state.individual_configs[idx]["tag_text"] = new_game_name
+
+                        if "模板4" in template_choice:
+                            new_main = st.text_input("独立宣传语：", value=current_cfg["main_title"], key=individual_key("individual_main", idx))
+                            new_sub = st.session_state.individual_configs[idx]["sub_title"]
+                        else:
+                            new_main = st.text_input("独立宣传语第一行：", value=current_cfg["main_title"], key=individual_key("individual_main", idx))
+                            new_sub = st.text_input("独立宣传语第二行：", value=current_cfg["sub_title"], key=individual_key("individual_sub", idx))
                         
                         if new_main != current_cfg["main_title"] or new_sub != current_cfg["sub_title"]:
                             mark_card_independent(idx)
@@ -920,7 +1016,7 @@ with col_right:
                         
                         with st.expander("细节配色方案", expanded=False):
                             if "模板2" in template_choice:
-                                c_t = st.color_picker("小字色", value=current_cfg["colors"].get("tag", "#000000"), key=individual_key("cp_t", idx))
+                                c_t = st.color_picker("游戏名颜色", value=current_cfg["colors"].get("tag", "#000000"), key=individual_key("cp_t", idx))
                                 if c_t != current_cfg["colors"].get("tag", "#000000"):
                                     mark_card_independent(idx)
                                 st.session_state.individual_configs[idx]["colors"]["tag"] = c_t
