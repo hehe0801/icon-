@@ -800,16 +800,21 @@ with col_left:
 
     # 📍 [UI名称修改点] 步骤三：背景画布设置
     st.header("3. 背景画布设置")
-    st.markdown('<div class="step-hint">模板4会自动使用智能图库背景，其它模板使用下面的批量背景设置。</div>', unsafe_allow_html=True)
+    st.markdown('<div class="step-hint">模板2使用背景图库随机匹配，模板4使用智能图库背景，模板1/3使用下面的批量背景设置。</div>', unsafe_allow_html=True)
     st.session_state.lock_background = st.toggle("锁定当前背景", value=st.session_state.lock_background)
     
     uploaded_bg = None
     bg_source = "纯白背景"
     bg_type = "同色清爽渐变"
 
+    fixed_bg_templates = []
+    if any("模板2" in t for t in selected_templates):
+        fixed_bg_templates.append("模板2：背景图库随机匹配")
     if any("模板4" in t for t in selected_templates):
-        st.info("模板4已开启全自动随机智能匹配。")
-    bg_source = st.radio("其它模板背景来源：", ["纯白背景", "AI智能渐变生成", "背景文件夹库随机匹配", "上传背景图"])
+        fixed_bg_templates.append("模板4：智能图库匹配")
+    if fixed_bg_templates:
+        st.info("；".join(fixed_bg_templates))
+    bg_source = st.radio("模板1/3背景来源：", ["纯白背景", "AI智能渐变生成", "上传背景图"])
 
     if bg_source == "AI智能渐变生成":
         bg_type = st.selectbox("选择渐变美学风格：", ["同色清爽渐变", "多色梦幻渐变"])
@@ -953,7 +958,12 @@ if uploaded_icons:
                 promo_groups
             )
 
-            template_bg_config = make_background_config("模板4智能库") if "模板4" in template_name else global_background_config.copy()
+            if "模板4" in template_name:
+                template_bg_config = make_background_config("模板4智能库")
+            elif "模板2" in template_name:
+                template_bg_config = make_background_config("背景文件夹库随机匹配")
+            else:
+                template_bg_config = global_background_config.copy()
             default_card_config = {
                 "main_title": card_copy["main_title"],
                 "sub_title": card_copy["sub_title"],
@@ -972,6 +982,9 @@ if uploaded_icons:
             
             cfg = st.session_state.individual_configs[card_id]
             if "background" not in cfg:
+                cfg["background"] = template_bg_config
+                cfg["background"]["bg_seed"] = st.session_state.random_seed + idx
+            elif card_id not in st.session_state.forked_cards and "模板2" in template_name:
                 cfg["background"] = template_bg_config
                 cfg["background"]["bg_seed"] = st.session_state.random_seed + idx
             if "auto_color" not in cfg:
