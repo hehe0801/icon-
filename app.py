@@ -161,6 +161,10 @@ if 'prepare_hd_downloads' not in st.session_state:
     st.session_state.prepare_hd_downloads = False
 if 'last_render_signature' not in st.session_state:
     st.session_state.last_render_signature = None
+if 'selected_templates' not in st.session_state:
+    st.session_state.selected_templates = []
+if 'template_copy_configs' not in st.session_state:
+    st.session_state.template_copy_configs = {}
 
 
 # ==================== 2. 全局独立辅助工具 ====================
@@ -199,6 +203,74 @@ def sanitize_filename(name):
     invalid_chars = '<>:"/\\|?*'
     safe_name = ''.join('_' if char in invalid_chars else char for char in name)
     return safe_name.strip() or "template"
+
+TEMPLATE_DEFAULTS = {
+    "模板1：质感大icon": {
+        "mode": "智能批量宣传语",
+        "main_title": "和对象第一次玩到凌晨",
+        "sub_title": "这游戏也太解压了吧！",
+        "promo_text": "和对象第一次玩到凌晨\n这游戏也太解压了吧！",
+        "colors": {"tag": "#000000", "main": "#000000", "sub": "#000000"},
+        "auto_color": False
+    },
+    "模板2：经典小icon": {
+        "mode": "单组文案应用该模板全部图片",
+        "main_title": "这个游戏！",
+        "sub_title": "iOS终于能玩啦！！",
+        "promo_text": "这个游戏！\niOS终于能玩啦！！",
+        "colors": {"tag": "#000000", "main": "#000000", "sub": "#000000"},
+        "auto_color": True
+    },
+    "模板3：极简吸睛流": {
+        "mode": "智能批量宣传语",
+        "main_title": "我的无聊救星",
+        "sub_title": "莫名其妙就玩了一整天",
+        "promo_text": "我的无聊救星\n莫名其妙就玩了一整天",
+        "colors": {"tag": "#000000", "main": "#000000", "sub": "#000000"},
+        "auto_color": False
+    },
+    "模板4：app模拟类": {
+        "mode": "单组文案应用该模板全部图片",
+        "main_title": "为低精力人设计的游戏",
+        "sub_title": "",
+        "promo_text": "为低精力人设计的游戏",
+        "colors": {"tag": "#FFFFFF", "main": "#FFFFFF", "sub": "#FFFFFF"},
+        "auto_color": False
+    }
+}
+
+def ensure_template_copy_config(template_name):
+    if template_name not in st.session_state.template_copy_configs:
+        default_cfg = TEMPLATE_DEFAULTS.get(template_name, TEMPLATE_DEFAULTS["模板1：质感大icon"])
+        st.session_state.template_copy_configs[template_name] = {
+            "mode": default_cfg["mode"],
+            "main_title": default_cfg["main_title"],
+            "sub_title": default_cfg["sub_title"],
+            "promo_text": default_cfg["promo_text"],
+            "colors": default_cfg["colors"].copy(),
+            "auto_color": default_cfg["auto_color"]
+        }
+    return st.session_state.template_copy_configs[template_name]
+
+def get_template_label(template_name):
+    return template_name.split("：")[0]
+
+def get_card_id(template_name, idx):
+    return f"{template_name}__{idx}"
+
+def get_template2_auto_colors(raw_rgb):
+    r, g, b = raw_rgb
+    h, l, s = colorsys.rgb_to_hls(r / 255.0, g / 255.0, b / 255.0)
+    main_rgb = colorsys.hls_to_rgb(h, 0.34, min(0.86, max(0.42, s + 0.12)))
+    sub_rgb = colorsys.hls_to_rgb((h + 0.04) % 1.0, 0.42, min(0.72, max(0.36, s)))
+    tag_rgb = colorsys.hls_to_rgb((h + 0.96) % 1.0, 0.50, min(0.66, max(0.30, s)))
+    def to_hex(rgb_tuple):
+        return "#{:02X}{:02X}{:02X}".format(*[max(0, min(255, int(v * 255))) for v in rgb_tuple])
+    return {
+        "main": to_hex(main_rgb),
+        "sub": to_hex(sub_rgb),
+        "tag": to_hex(tag_rgb)
+    }
 
 def make_background_config(source, gradient_type="同色清爽渐变", uploaded_file=None):
     return {
@@ -624,6 +696,7 @@ def render_card_png_bytes(
     sub_title,
     tag_text,
     colors_items,
+    auto_template2_color,
     bg_source,
     bg_type,
     bg_image_bytes,
@@ -647,7 +720,7 @@ def render_card_png_bytes(
         font_main = ImageFont.load_default()
         sub_font = ImageFont.load_default()
 
-    colors = dict(colors_items)
+    colors = get_template2_auto_colors(raw_rgb) if auto_template2_color and "模板2" in template_choice else dict(colors_items)
     bg_config = {
         "bg_source": bg_source,
         "bg_type": bg_type,
@@ -657,7 +730,7 @@ def render_card_png_bytes(
     canvas, img_width, img_height = create_background_canvas(bg_config, idx, icon_hue)
 
     render_function = TEMPLATE_REGISTRY[template_choice]
-    if template_choice == "模板2：经典UA流":
+    if "模板2" in template_choice:
         canvas = render_template_2(canvas, icon_src, main_title, sub_title, font_main, sub_font, raw_rgb, colors, tag_text)
     else:
         canvas = render_function(canvas, icon_src, main_title, sub_title, font_main, sub_font, raw_rgb, colors)
@@ -690,22 +763,19 @@ with col_left:
     # 📍 [UI名称修改点] 步骤一：选择排版模板
     st.header("1. 选择排版模板")
     st.markdown('<div class="step-hint">先决定整体版式，再选择适合游戏气质的视觉风格。</div>', unsafe_allow_html=True)
-    template_choice = st.selectbox("排版方案", list(TEMPLATE_REGISTRY.keys()))
-    
-    TEMPLATE_TEXT_MAP = {
-        "模板1：质感大icon": ("和对象第一次玩到凌晨", "这游戏也太解压了吧！"),
-        "模板2：经典小icon": ("这款游戏！", "ios终于能玩啦！！"),
-        "模板3：极简吸睛流": ("我的无聊救星", "莫名其妙就玩了一整天"),
-        "模板4：app模拟类": ("为低精力人设计的游戏", "这里改名字")
-    }
-
-    if not st.session_state.lock_copywriting:
-        current_mapped_main, current_mapped_sub = TEMPLATE_TEXT_MAP.get(template_choice, ("这款游戏！", "ios终于能玩啦！！"))
-        
-        if st.session_state.get('last_template','') != template_choice:
-            st.session_state.custom_main_title = current_mapped_main
-            st.session_state.custom_sub_title = current_mapped_sub
-            st.session_state.last_template = template_choice
+    selected_templates = st.multiselect(
+        "排版方案（最多选择 4 个）：",
+        list(TEMPLATE_REGISTRY.keys()),
+        default=st.session_state.selected_templates or ["模板1：质感大icon"]
+    )
+    if len(selected_templates) > 4:
+        st.warning("最多同时选择 4 个模板，已自动保留前 4 个。")
+        selected_templates = selected_templates[:4]
+    if not selected_templates:
+        selected_templates = ["模板1：质感大icon"]
+        st.warning("请至少选择 1 个模板，已默认使用模板1。")
+    st.session_state.selected_templates = selected_templates
+    template_choice = selected_templates[0]
         
     # 📍 [UI名称修改点] 视觉风格选项
     style_choice = st.selectbox("视觉风格", ["通用高端风", "可爱休闲风", "硬核竞技风"])
@@ -730,23 +800,16 @@ with col_left:
 
     # 📍 [UI名称修改点] 步骤三：背景画布设置
     st.header("3. 背景画布设置")
-    st.markdown('<div class="step-hint">为当前模板选择背景来源，锁定后重新生成时会保留背景。</div>', unsafe_allow_html=True)
+    st.markdown('<div class="step-hint">模板4会自动使用智能图库背景，其它模板使用下面的批量背景设置。</div>', unsafe_allow_html=True)
     st.session_state.lock_background = st.toggle("锁定当前背景", value=st.session_state.lock_background)
     
     uploaded_bg = None
-    bg_source = "纯白初始背景"
+    bg_source = "纯白背景"
     bg_type = "同色清爽渐变"
-    
-    if "模板4" in template_choice:
-        st.info("已开启全自动随机智能匹配。")
-        bg_source = "模板4智能库"
-    else:
-        if "模板2" in template_choice:
-            # 📍 [UI名称修改点] 模板2背景单选
-            bg_source = st.radio("选择背景来源：", ["背景文件夹库随机匹配", "上传背景图"])
-        else:
-            # 📍 [UI名称修改点] 通用模板背景单选
-            bg_source = st.radio("选择背景来源：", ["纯白背景", "AI智能渐变生成", "上传背景图"])
+
+    if any("模板4" in t for t in selected_templates):
+        st.info("模板4已开启全自动随机智能匹配。")
+    bg_source = st.radio("其它模板背景来源：", ["纯白背景", "AI智能渐变生成", "背景文件夹库随机匹配", "上传背景图"])
 
     if bg_source == "AI智能渐变生成":
         bg_type = st.selectbox("选择渐变美学风格：", ["同色清爽渐变", "多色梦幻渐变"])
@@ -757,79 +820,93 @@ with col_left:
 
     # 📍 [UI名称修改点] 步骤四：批量文案与颜色设置
     st.header("4. 批量文案与颜色设置")
-    st.markdown('<div class="step-hint">这里的文案会同步应用到所有图片，单张细调可在右侧完成。</div>', unsafe_allow_html=True)
+    st.markdown('<div class="step-hint">游戏名全局共用；每个模板有自己的批量文案和颜色设置。</div>', unsafe_allow_html=True)
     st.session_state.lock_copywriting = st.toggle("锁定当前文字文案", value=st.session_state.lock_copywriting)
     
-    global_colors_config = {"tag": "#000000", "main": "#000000", "sub": "#000000"}
-    promo_line_count = get_template_promo_line_count(template_choice)
-    promo_hint = "当前模板会按每张 1 行宣传语解析。" if promo_line_count == 1 else "当前模板会按每张 2 行宣传语解析，可直接粘贴 AI 生成的整段文案。"
-
     global_game_name = st.text_input("游戏名：", value=st.session_state.batch_game_name)
     st.session_state.batch_game_name = global_game_name
     st.session_state.custom_tag_text = global_game_name
 
-    copywriting_modes = ["单组文案应用全部图片", "智能批量宣传语"]
-    st.session_state.copywriting_mode = st.radio(
-        "文案应用方式：",
-        copywriting_modes,
-        index=copywriting_modes.index(st.session_state.copywriting_mode) if st.session_state.copywriting_mode in copywriting_modes else 0,
-        horizontal=True
-    )
+    template_copy_runtime = {}
+    copywriting_modes = ["单组文案应用该模板全部图片", "智能批量宣传语"]
+    copy_tabs = st.tabs([get_template_label(t) for t in selected_templates])
+    for tab, template_name in zip(copy_tabs, selected_templates):
+        with tab:
+            template_cfg = ensure_template_copy_config(template_name)
+            line_count = get_template_promo_line_count(template_name)
+            st.markdown(f"**{template_name}**")
+            template_cfg["mode"] = st.radio(
+                "文案应用方式：",
+                copywriting_modes,
+                index=copywriting_modes.index(template_cfg["mode"]) if template_cfg["mode"] in copywriting_modes else 0,
+                horizontal=True,
+                key=f"copy_mode_{template_name}"
+            )
 
-    if st.session_state.copywriting_mode == "智能批量宣传语":
-        st.caption(promo_hint)
-        batch_promo_text = st.text_area(
-            "批量宣传语：",
-            value=st.session_state.batch_promo_text,
-            height=180,
-            placeholder="直接粘贴 AI 生成的整段文案"
-        )
-        st.session_state.batch_promo_text = batch_promo_text
-        promo_groups = parse_promo_groups(batch_promo_text, promo_line_count)
-        if uploaded_icons:
-            st.caption(f"已解析 {len(promo_groups)} 组宣传语，将按上传顺序匹配 {len(uploaded_icons)} 张 Icon。")
-    else:
-        if "模板4" in template_choice:
-            global_main_title = st.text_input("宣传语：", value=st.session_state.custom_main_title)
-            global_sub_title = global_game_name
-        else:
-            global_main_title = st.text_input("宣传语第一行：", value=st.session_state.custom_main_title)
-            global_sub_title = st.text_input("宣传语第二行：", value=st.session_state.custom_sub_title)
-        st.session_state.custom_main_title = global_main_title
-        st.session_state.custom_sub_title = global_sub_title
-        if "模板4" in template_choice:
-            st.session_state.batch_promo_text = global_main_title.strip()
-        else:
-            st.session_state.batch_promo_text = f"{global_main_title}\n{global_sub_title}".strip()
-        promo_groups = []
+            if template_cfg["mode"] == "智能批量宣传语":
+                hint = "当前模板按每张 1 行宣传语解析。" if line_count == 1 else "当前模板按每张 2 行宣传语解析。"
+                st.caption(hint)
+                template_cfg["promo_text"] = st.text_area(
+                    "批量宣传语：",
+                    value=template_cfg["promo_text"],
+                    height=160,
+                    key=f"promo_text_{template_name}"
+                )
+                promo_groups = parse_promo_groups(template_cfg["promo_text"], line_count)
+                if uploaded_icons:
+                    st.caption(f"已解析 {len(promo_groups)} 组，将按上传顺序匹配 {len(uploaded_icons)} 张 Icon。")
+            else:
+                if "模板4" in template_name:
+                    template_cfg["main_title"] = st.text_input("上方宣传语：", value=template_cfg["main_title"], key=f"main_title_{template_name}")
+                    template_cfg["sub_title"] = global_game_name
+                else:
+                    template_cfg["main_title"] = st.text_input("宣传语第一行：", value=template_cfg["main_title"], key=f"main_title_{template_name}")
+                    template_cfg["sub_title"] = st.text_input("宣传语第二行：", value=template_cfg["sub_title"], key=f"sub_title_{template_name}")
+                promo_groups = []
 
-    if "模板2" in template_choice:
-        with st.expander("文字配色管理", expanded=True):
-            c1, c2, c3 = st.columns(3)
-            global_colors_config["tag"] = c1.color_picker("游戏名颜色", "#000000")
-            global_colors_config["main"] = c2.color_picker("宣传语第一行", "#000000")
-            global_colors_config["sub"] = c3.color_picker("宣传语第二行", "#000000")
-    elif "模板4" in template_choice:
-        with st.expander("文字配色管理", expanded=True):
-            c1, c2 = st.columns(2)
-            global_colors_config["main"] = c1.color_picker("宣传语", "#FFFFFF")
-            global_colors_config["sub"] = c2.color_picker("游戏名", "#FFFFFF")
-    else:
-        with st.expander("文字配色管理", expanded=True):
-            c1, c2 = st.columns(2)
-            global_colors_config["main"] = c1.color_picker("宣传语第一行", "#000000")
-            global_colors_config["sub"] = c2.color_picker("宣传语第二行", "#000000")
+            if "模板2" in template_name:
+                template_cfg["auto_color"] = st.checkbox("自动适配邻近文字色", value=template_cfg.get("auto_color", True), key=f"auto_color_{template_name}")
+                with st.expander("文字配色管理", expanded=not template_cfg["auto_color"]):
+                    c1, c2, c3 = st.columns(3)
+                    template_cfg["colors"]["tag"] = c1.color_picker("游戏名颜色", template_cfg["colors"].get("tag", "#000000"), key=f"color_tag_{template_name}")
+                    template_cfg["colors"]["main"] = c2.color_picker("宣传语第一行", template_cfg["colors"].get("main", "#000000"), key=f"color_main_{template_name}")
+                    template_cfg["colors"]["sub"] = c3.color_picker("宣传语第二行", template_cfg["colors"].get("sub", "#000000"), key=f"color_sub_{template_name}")
+            elif "模板4" in template_name:
+                with st.expander("文字配色管理", expanded=True):
+                    c1, c2 = st.columns(2)
+                    template_cfg["colors"]["main"] = c1.color_picker("上方宣传语", template_cfg["colors"].get("main", "#FFFFFF"), key=f"color_main_{template_name}")
+                    template_cfg["colors"]["sub"] = c2.color_picker("游戏名", template_cfg["colors"].get("sub", "#FFFFFF"), key=f"color_sub_{template_name}")
+                    template_cfg["colors"]["tag"] = template_cfg["colors"]["sub"]
+            else:
+                with st.expander("文字配色管理", expanded=True):
+                    c1, c2 = st.columns(2)
+                    template_cfg["colors"]["main"] = c1.color_picker("宣传语第一行", template_cfg["colors"].get("main", "#000000"), key=f"color_main_{template_name}")
+                    template_cfg["colors"]["sub"] = c2.color_picker("宣传语第二行", template_cfg["colors"].get("sub", "#000000"), key=f"color_sub_{template_name}")
+                    template_cfg["colors"]["tag"] = "#000000"
+
+            template_copy_runtime[template_name] = {
+                "config": template_cfg,
+                "promo_groups": promo_groups
+            }
 
 current_render_signature = (
-    template_choice,
+    tuple(selected_templates),
     style_choice,
     st.session_state.fast_preview_mode,
-    st.session_state.copywriting_mode,
     st.session_state.batch_game_name,
-    st.session_state.batch_promo_text,
-    st.session_state.custom_main_title,
-    st.session_state.custom_sub_title,
-    tuple(sorted(global_colors_config.items())),
+    tuple(
+        (
+            template_name,
+            cfg["mode"],
+            cfg["main_title"],
+            cfg["sub_title"],
+            cfg["promo_text"],
+            cfg.get("auto_color", False),
+            tuple(sorted(cfg["colors"].items()))
+        )
+        for template_name, cfg in sorted(st.session_state.template_copy_configs.items())
+        if template_name in selected_templates
+    ),
     global_background_config.get("bg_source"),
     global_background_config.get("bg_type"),
     len(global_background_config.get("bg_image_bytes") or b""),
@@ -844,7 +921,8 @@ st.session_state.last_render_signature = current_render_signature
 # ⚙️ 4. 后端中央核心逻辑与渲染处理（保持逻辑完好不变）
 # ====================================================================
 generated_canvases = []  
-hd_image_bytes_list = []
+generated_by_template = {}
+hd_image_bytes_map = {}
 
 if uploaded_icons:
     font_map = {
@@ -857,104 +935,117 @@ if uploaded_icons:
     if not os.path.exists(chosen_bold_path): chosen_bold_path = chosen_bold_path.replace(".ttf", ".otf")
     if not os.path.exists(chosen_regular_path): chosen_regular_path = chosen_regular_path.replace(".ttf", ".otf")
 
-    for idx, single_icon in enumerate(uploaded_icons):
-        card_copy = get_copywriting_for_card(
-            idx,
-            template_choice,
-            st.session_state.copywriting_mode,
-            st.session_state.batch_game_name,
-            st.session_state.custom_main_title,
-            st.session_state.custom_sub_title,
-            promo_groups
-        )
-        default_card_config = {
-            "main_title": card_copy["main_title"],
-            "sub_title": card_copy["sub_title"],
-            "tag_text": card_copy["tag_text"],
-            "colors": global_colors_config.copy(),
-            "background": global_background_config.copy()
-        }
-        default_card_config["background"]["bg_seed"] = st.session_state.random_seed + idx
+    for template_name in selected_templates:
+        generated_by_template[template_name] = []
+        template_runtime = template_copy_runtime[template_name]
+        copy_cfg = template_runtime["config"]
+        promo_groups = template_runtime["promo_groups"]
 
-        if idx not in st.session_state.individual_configs:
-            st.session_state.individual_configs[idx] = default_card_config
-        elif idx not in st.session_state.forked_cards:
-            st.session_state.individual_configs[idx] = {
+        for idx, single_icon in enumerate(uploaded_icons):
+            card_id = get_card_id(template_name, idx)
+            card_copy = get_copywriting_for_card(
+                idx,
+                template_name,
+                copy_cfg["mode"],
+                st.session_state.batch_game_name,
+                copy_cfg["main_title"],
+                copy_cfg["sub_title"],
+                promo_groups
+            )
+
+            template_bg_config = make_background_config("模板4智能库") if "模板4" in template_name else global_background_config.copy()
+            default_card_config = {
                 "main_title": card_copy["main_title"],
                 "sub_title": card_copy["sub_title"],
                 "tag_text": card_copy["tag_text"],
-                "colors": global_colors_config.copy(),
-                "background": global_background_config.copy()
+                "colors": copy_cfg["colors"].copy(),
+                "auto_color": copy_cfg.get("auto_color", False),
+                "background": template_bg_config
             }
-            st.session_state.individual_configs[idx]["background"]["bg_seed"] = st.session_state.random_seed + idx
-        
-        cfg = st.session_state.individual_configs[idx]
-        if "background" not in cfg:
-            cfg["background"] = global_background_config.copy()
-            cfg["background"]["bg_seed"] = st.session_state.random_seed + idx
+            default_card_config["background"]["bg_seed"] = st.session_state.random_seed + idx
 
-        icon_bytes = single_icon.getvalue()
-        bg_cfg = cfg.get("background", global_background_config.copy())
-        card_seed = bg_cfg.get("bg_seed", st.session_state.random_seed + idx)
-        render_args = (
-            icon_bytes,
-            idx,
-            card_seed,
-            template_choice,
-            chosen_bold_path,
-            chosen_regular_path,
-            cfg["main_title"],
-            cfg["sub_title"],
-            cfg["tag_text"],
-            tuple(sorted(cfg["colors"].items())),
-            bg_cfg.get("bg_source", "纯白背景"),
-            bg_cfg.get("bg_type", "同色清爽渐变"),
-            bg_cfg.get("bg_image_bytes"),
-            card_seed
-        )
-        preview_width = 640 if st.session_state.fast_preview_mode else 1280
-        rendered_png = render_card_png_bytes(
-            icon_bytes,
-            idx,
-            card_seed,
-            preview_width,
-            template_choice,
-            chosen_bold_path,
-            chosen_regular_path,
-            cfg["main_title"],
-            cfg["sub_title"],
-            cfg["tag_text"],
-            tuple(sorted(cfg["colors"].items())),
-            bg_cfg.get("bg_source", "纯白背景"),
-            bg_cfg.get("bg_type", "同色清爽渐变"),
-            bg_cfg.get("bg_image_bytes"),
-            card_seed
-        )
-        canvas = Image.open(io.BytesIO(rendered_png)).convert("RGB").copy()
+            if card_id not in st.session_state.individual_configs:
+                st.session_state.individual_configs[card_id] = default_card_config
+            elif card_id not in st.session_state.forked_cards:
+                st.session_state.individual_configs[card_id] = default_card_config
+                st.session_state.individual_configs[card_id]["background"]["bg_seed"] = st.session_state.random_seed + idx
+            
+            cfg = st.session_state.individual_configs[card_id]
+            if "background" not in cfg:
+                cfg["background"] = template_bg_config
+                cfg["background"]["bg_seed"] = st.session_state.random_seed + idx
+            if "auto_color" not in cfg:
+                cfg["auto_color"] = copy_cfg.get("auto_color", False)
 
-        generated_canvases.append((single_icon.name, canvas, render_args))
+            icon_bytes = single_icon.getvalue()
+            bg_cfg = cfg.get("background", template_bg_config)
+            card_seed = bg_cfg.get("bg_seed", st.session_state.random_seed + idx)
+            render_args = (
+                icon_bytes,
+                idx,
+                card_seed,
+                template_name,
+                chosen_bold_path,
+                chosen_regular_path,
+                cfg["main_title"],
+                cfg["sub_title"],
+                cfg["tag_text"],
+                tuple(sorted(cfg["colors"].items())),
+                cfg.get("auto_color", False),
+                bg_cfg.get("bg_source", "纯白背景"),
+                bg_cfg.get("bg_type", "同色清爽渐变"),
+                bg_cfg.get("bg_image_bytes"),
+                card_seed
+            )
+            preview_width = 520 if st.session_state.fast_preview_mode else 1280
+            rendered_png = render_card_png_bytes(
+                icon_bytes,
+                idx,
+                card_seed,
+                preview_width,
+                template_name,
+                chosen_bold_path,
+                chosen_regular_path,
+                cfg["main_title"],
+                cfg["sub_title"],
+                cfg["tag_text"],
+                tuple(sorted(cfg["colors"].items())),
+                cfg.get("auto_color", False),
+                bg_cfg.get("bg_source", "纯白背景"),
+                bg_cfg.get("bg_type", "同色清爽渐变"),
+                bg_cfg.get("bg_image_bytes"),
+                card_seed
+            )
+            canvas = Image.open(io.BytesIO(rendered_png)).convert("RGB").copy()
 
-        if st.session_state.prepare_hd_downloads:
-            hd_png = render_card_png_bytes(*render_args[:3], 1280, *render_args[3:])
-            hd_image_bytes_list.append(hd_png)
+            item = {
+                "template": template_name,
+                "icon_idx": idx,
+                "card_id": card_id,
+                "name": single_icon.name,
+                "canvas": canvas,
+                "render_args": render_args
+            }
+            generated_canvases.append(item)
+            generated_by_template[template_name].append(item)
+
+            if st.session_state.prepare_hd_downloads:
+                hd_png = render_card_png_bytes(*render_args[:3], 1280, *render_args[3:])
+                hd_image_bytes_map[card_id] = hd_png
 
 
 # ==================== 5. 右侧渲染结果展示（2K 弹性工作区） ====================
 with col_right:
-    # 📍 [UI名称修改点] 工作台主标题
     st.markdown("### 效果预览图")
     
     if uploaded_icons and generated_canvases:
-        # 📍 [UI名称修改点] 步骤五主标题
         st.header("生成结果控制")
-
-        safe_template_name = sanitize_filename(template_choice)
 
         st.markdown(
             f"""
             <div class="result-toolbar">
                 <div class="result-toolbar-title">已生成 {len(generated_canvases)} 张图片</div>
-                <div class="result-toolbar-desc">当前模板：{template_choice}。默认显示快速预览，需要导出时再准备高清下载文件。</div>
+                <div class="result-toolbar-desc">已选择 {len(selected_templates)} 个模板。默认显示快速预览，需要导出时再准备高清下载文件。</div>
             </div>
             """,
             unsafe_allow_html=True
@@ -976,219 +1067,77 @@ with col_right:
             else:
                 st.caption("高清下载未准备")
 
-        if st.session_state.prepare_hd_downloads and hd_image_bytes_list:
+        if st.session_state.prepare_hd_downloads and hd_image_bytes_map:
             zip_buffer = io.BytesIO()
             with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-                for idx, img_bytes in enumerate(hd_image_bytes_list, start=1):
-                    zip_file.writestr(f"{idx:02d}_{safe_template_name}.png", img_bytes)
+                for template_name in selected_templates:
+                    safe_template_name = sanitize_filename(template_name)
+                    for item in generated_by_template.get(template_name, []):
+                        card_id = item["card_id"]
+                        if card_id in hd_image_bytes_map:
+                            file_name = f"{safe_template_name}/{item['icon_idx'] + 1:02d}_{safe_template_name}.png"
+                            zip_file.writestr(file_name, hd_image_bytes_map[card_id])
 
             st.download_button(
                 label="一键下载全部图片 ZIP",
                 data=zip_buffer.getvalue(),
-                file_name=f"{safe_template_name}_全部图片.zip",
+                file_name="全部模板_全部图片.zip",
                 mime="application/zip",
                 use_container_width=True,
                 key="download_all_zip"
             )
-            st.caption("压缩包内命名：01_模板名.png")
+            st.caption("压缩包会按模板分文件夹。")
         else:
             st.info("当前为快速预览。需要导出原尺寸图片时，请先点击“准备高清下载”。")
-          
-        # 📍 [UI名称修改点] 单选切换模式的文字名称
-        st.session_state.edit_view_mode = st.radio(
-            "选择编辑与预览模式：",
-            ["批量预览模式", "单张精细微调"],
-            horizontal=True
-        )
         
         st.markdown("---")
 
-        # 🖼️ 模式 A：批量预览模式
-        if st.session_state.edit_view_mode == "批量预览模式":
-            grid_cols_count = 3
-            total_images = len(generated_canvases)
-            
-            for i in range(0, total_images, grid_cols_count):
-                chunk = generated_canvases[i:i+grid_cols_count]
+        grid_cols_count = 4
+        for template_name in selected_templates:
+            template_items = generated_by_template.get(template_name, [])
+            if not template_items:
+                continue
+            st.markdown(f"#### {template_name}")
+            st.caption(f"{len(template_items)} 张预览")
+
+            for i in range(0, len(template_items), grid_cols_count):
+                chunk = template_items[i:i+grid_cols_count]
                 columns = st.columns(grid_cols_count)
-                for col_idx, (name, current_canvas, render_args) in enumerate(chunk):
-                    global_idx = i + col_idx
-                    
+                for col_idx, item in enumerate(chunk):
                     with columns[col_idx]:
+                        current_canvas = item["canvas"]
+                        card_id = item["card_id"]
+                        icon_idx = item["icon_idx"]
                         img_buffer = io.BytesIO()
                         current_canvas.save(img_buffer, format="PNG", compress_level=1)
                         img_bytes = img_buffer.getvalue()
-                      
-                        status_label = " (已独立微调)" if global_idx in st.session_state.forked_cards else " (全局同步)"
-                        st.image(img_buffer, caption=f"卡片 {global_idx+1}{status_label}", use_container_width=True)
-                        
-                        # 📍 [UI名称修改点] 批量列表下的单张下载按钮名称
+
+                        status_label = "已锁定" if card_id in st.session_state.forked_cards else "全局同步"
+                        st.image(img_buffer, caption=f"卡片 {icon_idx+1} · {status_label}", use_container_width=True)
+
                         dl_col, lock_col = st.columns([5, 1])
                         with dl_col:
-                            download_ready = st.session_state.prepare_hd_downloads and global_idx < len(hd_image_bytes_list)
+                            download_ready = st.session_state.prepare_hd_downloads and card_id in hd_image_bytes_map
+                            safe_template_name = sanitize_filename(template_name)
                             st.download_button(
-                                label=f"下载卡片 {global_idx+1}" if download_ready else "先准备高清", 
-                                data=hd_image_bytes_list[global_idx] if download_ready else b"", 
-                                file_name=f"ad_layout_{global_idx+1}.png", 
+                                label=f"下载卡片 {icon_idx+1}" if download_ready else "先准备高清",
+                                data=hd_image_bytes_map[card_id] if download_ready else b"",
+                                file_name=f"{icon_idx + 1:02d}_{safe_template_name}.png",
                                 mime="image/png",
-                                key=f"dl_grid_btn_{global_idx}",
+                                key=f"dl_grid_btn_{card_id}",
                                 use_container_width=True,
                                 disabled=not download_ready
                             )
                         with lock_col:
-                            lock_label = "🔒" if global_idx in st.session_state.forked_cards else "🔓"
-                            if st.button(lock_label, key=f"grid_lock_{global_idx}", help="锁定后不再受左侧批量设置影响", use_container_width=True):
+                            lock_label = "🔒" if card_id in st.session_state.forked_cards else "🔓"
+                            if st.button(lock_label, key=f"grid_lock_{card_id}", help="锁定后不再受左侧批量设置影响", use_container_width=True):
                                 st.session_state.prepare_hd_downloads = False
-                                if global_idx in st.session_state.forked_cards:
-                                    st.session_state.forked_cards.remove(global_idx)
-                                    reset_individual_controls(global_idx)
+                                if card_id in st.session_state.forked_cards:
+                                    st.session_state.forked_cards.remove(card_id)
+                                    reset_individual_controls(card_id)
                                 else:
-                                    st.session_state.forked_cards.add(global_idx)
+                                    st.session_state.forked_cards.add(card_id)
                                 st.rerun()
-
-        # 🖼️ 模式 B：单张精细微调
-        else:
-            # 📍 [UI名称修改点] 标签分类卡命名格式
-            tabs = st.tabs([f"卡片 {i+1}" for i, (name, _, __) in enumerate(generated_canvases)])
-
-            for idx, tab in enumerate(tabs):
-                with tab:
-                    filename, current_canvas, render_args = generated_canvases[idx]
-                    
-                    img_buffer = io.BytesIO()
-                    current_canvas.save(img_buffer, format="PNG", compress_level=1)
-                    img_bytes = img_buffer.getvalue()
-
-                    preview_col, edit_col = st.columns([5, 5])
-                    
-                    with preview_col:
-                        st.image(img_buffer, caption=f"实时渲染图 {idx+1}", width=340)
-                        
-                        # 📍 [UI名称修改点] 独享控制台下的导出按钮
-                        download_ready = st.session_state.prepare_hd_downloads and idx < len(hd_image_bytes_list)
-                        st.download_button(
-                            label=f"导出当前图片" if download_ready else "先准备高清下载", 
-                            data=hd_image_bytes_list[idx] if download_ready else b"", 
-                            file_name=f"ad_layout_individual_{idx+1}.png", 
-                            mime="image/png",
-                            key=f"dl_btn_{idx}",
-                            disabled=not download_ready
-                        )
-
-                    with edit_col:
-                        # 📍 [UI名称修改点] 单独配置小表单标题
-                        st.markdown(f"**进行单独微调 (卡片 {idx+1})**")
-                        current_cfg = st.session_state.individual_configs[idx]
-                        lock_text = "已锁定，不受左侧批量设置影响" if idx in st.session_state.forked_cards else "未锁定，会跟随左侧批量设置"
-                        lock_action = "解锁当前图片" if idx in st.session_state.forked_cards else "锁定当前图片"
-                        lock_col_a, lock_col_b = st.columns([3, 2])
-                        with lock_col_a:
-                            st.caption(lock_text)
-                        with lock_col_b:
-                            if st.button(lock_action, key=f"individual_lock_{idx}", use_container_width=True):
-                                st.session_state.prepare_hd_downloads = False
-                                if idx in st.session_state.forked_cards:
-                                    st.session_state.forked_cards.remove(idx)
-                                    reset_individual_controls(idx)
-                                else:
-                                    st.session_state.forked_cards.add(idx)
-                                st.rerun()
-                        
-                        if "模板2" in template_choice:
-                            # 📍 [UI名称修改点] 单独改动文字框组件名
-                            new_tag = st.text_input("独立游戏名：", value=current_cfg["tag_text"], key=individual_key("individual_tag", idx))
-                            if new_tag != current_cfg["tag_text"]:
-                                mark_card_independent(idx)
-                            st.session_state.individual_configs[idx]["tag_text"] = new_tag
-                        elif "模板4" in template_choice:
-                            new_game_name = st.text_input("独立游戏名：", value=current_cfg["sub_title"], key=individual_key("individual_game_name", idx))
-                            if new_game_name != current_cfg["sub_title"]:
-                                mark_card_independent(idx)
-                            st.session_state.individual_configs[idx]["sub_title"] = new_game_name
-                            st.session_state.individual_configs[idx]["tag_text"] = new_game_name
-
-                        if "模板4" in template_choice:
-                            new_main = st.text_input("独立宣传语：", value=current_cfg["main_title"], key=individual_key("individual_main", idx))
-                            new_sub = st.session_state.individual_configs[idx]["sub_title"]
-                        else:
-                            new_main = st.text_input("独立宣传语第一行：", value=current_cfg["main_title"], key=individual_key("individual_main", idx))
-                            new_sub = st.text_input("独立宣传语第二行：", value=current_cfg["sub_title"], key=individual_key("individual_sub", idx))
-                        
-                        if new_main != current_cfg["main_title"] or new_sub != current_cfg["sub_title"]:
-                            mark_card_independent(idx)
-                        st.session_state.individual_configs[idx]["main_title"] = new_main
-                        st.session_state.individual_configs[idx]["sub_title"] = new_sub
-                        
-                        with st.expander("细节配色方案", expanded=False):
-                            if "模板2" in template_choice:
-                                c_t = st.color_picker("游戏名颜色", value=current_cfg["colors"].get("tag", "#000000"), key=individual_key("cp_t", idx))
-                                if c_t != current_cfg["colors"].get("tag", "#000000"):
-                                    mark_card_independent(idx)
-                                st.session_state.individual_configs[idx]["colors"]["tag"] = c_t
-        
-                            c_m = st.color_picker("主字色", value=current_cfg["colors"].get("main", "#000000"), key=individual_key("cp_m", idx))
-                            c_s = st.color_picker("副字色", value=current_cfg["colors"].get("sub", "#000000"), key=individual_key("cp_s", idx))
-              
-                            if c_m != current_cfg["colors"].get("main", "#000000") or c_s != current_cfg["colors"].get("sub", "#000000"):
-                                mark_card_independent(idx)
-                            st.session_state.individual_configs[idx]["colors"]["main"] = c_m
-                            st.session_state.individual_configs[idx]["colors"]["sub"] = c_s
-
-                        with st.expander("单张背景设置", expanded=False):
-                            current_bg_cfg = current_cfg.get("background", global_background_config.copy())
-                            old_bg_source = current_bg_cfg.get("bg_source", "纯白背景")
-                            old_bg_type = current_bg_cfg.get("bg_type", "同色清爽渐变")
-                            old_bg_image_bytes = current_bg_cfg.get("bg_image_bytes")
-                            bg_options = ["纯白背景", "AI智能渐变生成", "上传背景图"]
-                            current_bg_source = current_bg_cfg.get("bg_source", "纯白背景")
-                            if current_bg_source not in bg_options:
-                                current_bg_source = "纯白背景"
-                            new_bg_source = st.radio(
-                                "独立背景来源：",
-                                bg_options,
-                                index=bg_options.index(current_bg_source),
-                                key=individual_key("individual_bg_source", idx)
-                            )
-                            new_bg_type = current_bg_cfg.get("bg_type", "同色清爽渐变")
-                            if new_bg_source == "AI智能渐变生成":
-                                gradient_options = ["同色清爽渐变", "多色梦幻渐变"]
-                                if new_bg_type not in gradient_options:
-                                    new_bg_type = "同色清爽渐变"
-                                new_bg_type = st.selectbox(
-                                    "独立渐变美学风格：",
-                                    gradient_options,
-                                    index=gradient_options.index(new_bg_type),
-                                    key=individual_key("individual_bg_type", idx)
-                                )
-                            new_bg_upload = None
-                            if new_bg_source == "上传背景图":
-                                new_bg_upload = st.file_uploader(
-                                    "上传当前图片专用背景：",
-                                    type=["png", "jpg", "jpeg"],
-                                    key=individual_key("individual_bg_upload", idx)
-                                )
-                            bg_image_bytes = current_bg_cfg.get("bg_image_bytes")
-                            if new_bg_upload is not None:
-                                bg_image_bytes = new_bg_upload.getvalue()
-                            st.session_state.individual_configs[idx]["background"] = {
-                                "bg_source": new_bg_source,
-                                "bg_type": new_bg_type,
-                                "bg_image_bytes": bg_image_bytes if new_bg_source == "上传背景图" else None,
-                                "bg_seed": current_bg_cfg.get("bg_seed", st.session_state.random_seed + idx)
-                            }
-                            bg_changed = (
-                                new_bg_source != old_bg_source or
-                                new_bg_type != old_bg_type or
-                                (bg_image_bytes if new_bg_source == "上传背景图" else None) != old_bg_image_bytes
-                            )
-                            if bg_changed:
-                                mark_card_independent(idx)
-                                st.rerun()
-                          
-                        # 📍 [UI名称修改点] 应用独立改动的确认按钮
-                        if st.button("保存当前微调", key=f"apply_individual_{idx}"):
-                            st.session_state.forked_cards.add(idx)
-                            st.rerun()
 
         # ----------------- 底部中央全剧重置按钮区 -----------------
         st.markdown("---")
@@ -1201,10 +1150,11 @@ with col_right:
                     st.session_state.random_seed = random.randint(0, 99999)
                 
                 if not st.session_state.lock_copywriting:
-                    if "模板4" not in template_choice:
-                        default_main = random.choice(list(MAIN_SUB_COPYWRITING_POOL.keys()))
-                        st.session_state.custom_main_title = default_main
-                        st.session_state.custom_sub_title = MAIN_SUB_COPYWRITING_POOL[default_main]
+                    for template_name, cfg in st.session_state.template_copy_configs.items():
+                        if template_name in selected_templates and cfg.get("mode") == "智能批量宣传语" and "模板4" not in template_name:
+                            default_main = random.choice(list(MAIN_SUB_COPYWRITING_POOL.keys()))
+                            cfg["main_title"] = default_main
+                            cfg["sub_title"] = MAIN_SUB_COPYWRITING_POOL[default_main]
                 
                 locked_configs = {
                     card_idx: cfg
