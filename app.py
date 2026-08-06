@@ -175,6 +175,22 @@ def mask_rounded_rectangle(img, radius):
     img.putalpha(mask)
     return img
 
+def make_rounded_icon_cover(icon_src, size, radius_ratio=0.155):
+    icon_scaled = icon_src.resize((size, size), Image.Resampling.LANCZOS)
+    mask_scale = 3
+    mask = Image.new('L', (size * mask_scale, size * mask_scale), 0)
+    mask_draw = ImageDraw.Draw(mask)
+    mask_draw.rounded_rectangle(
+        (0, 0, size * mask_scale, size * mask_scale),
+        radius=int(size * radius_ratio * mask_scale),
+        fill=255
+    )
+    mask = mask.resize((size, size), Image.Resampling.LANCZOS)
+    icon_final = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    icon_final.paste(icon_scaled, (0, 0))
+    icon_final.putalpha(mask)
+    return icon_final
+
 def get_image_main_hue(image_path):
     try:
         ct = ColorThief(image_path)
@@ -642,10 +658,10 @@ def render_template_4(canvas, icon_src, main_title, sub_title, font_main, sub_fo
         aspect_ratio = box_w / box_h if box_h > 0 else 0
         
         if 0.8 <= aspect_ratio <= 1.25 and (img_width * 0.2 < box_w < img_width * 0.7):
-            icon_scaled = icon_src.resize((box_w, box_h), Image.Resampling.LANCZOS)
-            computed_radius = int(box_w * 0.18)
-            icon_final = mask_rounded_rectangle(icon_scaled, computed_radius)
-            canvas.paste(icon_final, (x_min, y_min), icon_final)
+            cover_pad = max(6, int(box_w * 0.025))
+            cover_size = max(box_w, box_h) + cover_pad * 2
+            icon_final = make_rounded_icon_cover(icon_src, cover_size)
+            canvas.paste(icon_final, (x_min - cover_pad, y_min - cover_pad), icon_final)
             
             try: f_main = font_main.font_variant(size=MAIN_FONT_SIZE)
             except: f_main = font_main
@@ -661,9 +677,10 @@ def render_template_4(canvas, icon_src, main_title, sub_title, font_main, sub_fo
     x_min = (img_width - box_w) // 2
     y_min = int(img_height * 0.42)
     
-    icon_scaled = icon_src.resize((box_w, box_h), Image.Resampling.LANCZOS)
-    icon_final = mask_rounded_rectangle(icon_scaled, int(box_w * 0.18))
-    canvas.paste(icon_final, (x_min, y_min), icon_final)
+    cover_pad = max(6, int(box_w * 0.025))
+    cover_size = box_w + cover_pad * 2
+    icon_final = make_rounded_icon_cover(icon_src, cover_size)
+    canvas.paste(icon_final, (x_min - cover_pad, y_min - cover_pad), icon_final)
     
     try: f_main = font_main.font_variant(size=MAIN_FONT_SIZE)
     except: f_main = font_main
