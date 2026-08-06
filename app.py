@@ -163,6 +163,8 @@ if 'last_render_signature' not in st.session_state:
     st.session_state.last_render_signature = None
 if 'selected_templates' not in st.session_state:
     st.session_state.selected_templates = []
+if 'template_multiselect_value' not in st.session_state:
+    st.session_state.template_multiselect_value = st.session_state.selected_templates or ["模板1：质感大icon"]
 if 'template_copy_configs' not in st.session_state:
     st.session_state.template_copy_configs = {}
 
@@ -780,17 +782,24 @@ with col_left:
     # 📍 [UI名称修改点] 步骤一：选择排版模板
     st.header("1. 选择排版模板")
     st.markdown('<div class="step-hint">先决定整体版式，再选择适合游戏气质的视觉风格。</div>', unsafe_allow_html=True)
+    template_options = list(TEMPLATE_REGISTRY.keys())
+    st.session_state.template_multiselect_value = [
+        template_name for template_name in st.session_state.template_multiselect_value
+        if template_name in template_options
+    ] or ["模板1：质感大icon"]
     selected_templates = st.multiselect(
         "排版方案（最多选择 4 个）：",
-        list(TEMPLATE_REGISTRY.keys()),
-        default=st.session_state.selected_templates or ["模板1：质感大icon"]
+        template_options,
+        key="template_multiselect_value"
     )
     if len(selected_templates) > 4:
         st.warning("最多同时选择 4 个模板，已自动保留前 4 个。")
         selected_templates = selected_templates[:4]
+        st.session_state.template_multiselect_value = selected_templates
     if not selected_templates:
         selected_templates = ["模板1：质感大icon"]
         st.warning("请至少选择 1 个模板，已默认使用模板1。")
+        st.session_state.template_multiselect_value = selected_templates
     st.session_state.selected_templates = selected_templates
     template_choice = selected_templates[0]
         
