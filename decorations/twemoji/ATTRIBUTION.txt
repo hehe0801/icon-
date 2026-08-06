@@ -1,0 +1,8 @@
+﻿Twemoji decorative PNG assets
+
+Source: https://github.com/twitter/twemoji
+Graphics license: CC-BY 4.0
+License: https://creativecommons.org/licenses/by/4.0/
+Attribution: Graphics derived from Twemoji by Twitter, Inc and contributors, licensed under CC-BY 4.0.
+
+These files were downloaded as transparent PNG assets for local selection and later app integration.
