@@ -116,6 +116,104 @@ T4_DIR = "template4_cards"
 if not os.path.exists(T4_DIR):
     os.makedirs(T4_DIR)
 
+DECORATION_DIR = os.path.join("decorations", "twemoji")
+
+TEMPLATE1_COMMON_DECORATION_NAMES = {
+    "sparkles", "star", "glowing_star", "fire", "rocket", "crown", "gem",
+    "trophy", "gift", "lightning", "collision", "two_hearts",
+    "sparkling_heart", "bullseye"
+}
+
+TEMPLATE1_DECORATION_KEYWORDS = {
+    "battle": ["战斗", "打怪", "冒险", "挑战", "闯关", "爆", "火", "热血", "武器", "对决", "攻击"],
+    "cute": ["可爱", "萌", "爱心", "甜", "恋爱", "猫", "狗", "治愈"],
+    "puzzle": ["解谜", "拼图", "动脑", "脑洞", "策略", "益智", "关卡", "烧脑"],
+    "reward": ["奖励", "金币", "宝石", "奖杯", "礼物", "福利", "抽奖", "宝藏"],
+    "magic": ["魔法", "奇幻", "神秘", "梦幻", "彩虹", "许愿", "精灵"],
+    "nature": ["自然", "花园", "种田", "田园", "森林", "植物", "低精力", "放松"],
+    "royal": ["皇冠", "城堡", "王国", "公主", "国王", "贵族"],
+    "speed": ["快", "速度", "赛车", "冲刺", "飞行", "火箭", "加速"],
+    "music": ["音乐", "节奏", "唱歌", "歌曲", "麦克风", "乐器"],
+    "time": ["时间", "等待", "时钟", "倒计时", "分钟", "小时", "休闲"]
+}
+
+
+@st.cache_data(show_spinner=False)
+def load_decoration_asset_paths():
+    paths = []
+    if os.path.exists(DECORATION_DIR):
+        for root, _, files in os.walk(DECORATION_DIR):
+            for file_name in files:
+                if file_name.lower().endswith(".png") and file_name.lower() != "twemoji_preview.png":
+                    paths.append(os.path.join(root, file_name))
+    return sorted(paths)
+
+
+@st.cache_data(show_spinner=False, max_entries=128)
+def load_decoration_asset(path):
+    return Image.open(path).convert("RGBA")
+
+
+def get_decoration_name(path):
+    name = os.path.splitext(os.path.basename(path))[0]
+    category = os.path.basename(os.path.dirname(path))
+    prefix = category + "_"
+    if name.startswith(prefix):
+        name = name[len(prefix):]
+    return name
+
+
+def choose_template1_decoration(raw_rgb, text=""):
+    paths = load_decoration_asset_paths()
+    if not paths:
+        return None
+
+    common_paths = [path for path in paths if get_decoration_name(path) in TEMPLATE1_COMMON_DECORATION_NAMES]
+    matched_paths = []
+    for category, keywords in TEMPLATE1_DECORATION_KEYWORDS.items():
+        if any(keyword in text for keyword in keywords):
+            matched_paths.extend([path for path in paths if os.path.basename(os.path.dirname(path)) == category])
+
+    if matched_paths:
+        weighted_paths = matched_paths * 7 + common_paths * 3 + paths
+    elif common_paths:
+        weighted_paths = common_paths * 8 + paths
+    else:
+        weighted_paths = paths
+
+    stable_key = int(raw_rgb[0]) * 3 + int(raw_rgb[1]) * 5 + int(raw_rgb[2]) * 7
+    stable_key += sum((index + 1) * ord(char) for index, char in enumerate(text))
+    rng = random.Random(stable_key)
+    return rng.choice(weighted_paths)
+
+
+def paste_template1_decoration(canvas, draw, text, font, center_x, center_y, raw_rgb, decoration_hint_text=""):
+    decoration_path = choose_template1_decoration(raw_rgb, decoration_hint_text or text)
+    if not decoration_path or not text:
+        return
+
+    bbox = draw.textbbox((center_x, center_y), text, font=font, anchor="mm")
+    text_left, text_top, text_right, text_bottom = bbox
+    text_h = max(1, text_bottom - text_top)
+    icon_size = int(text_h * 0.92)
+    gap = max(18, int(icon_size * 0.38))
+    side_pad = 18
+    max_left_x = text_left - gap - icon_size
+    min_right_x = text_right + gap + icon_size
+    if max_left_x < side_pad or min_right_x > canvas.size[0] - side_pad:
+        icon_size = max(26, min(icon_size, int((canvas.size[0] - (text_right - text_left) - side_pad * 2 - gap * 2) / 2)))
+        gap = max(12, int(icon_size * 0.32))
+
+    if icon_size < 24:
+        return
+
+    icon = load_decoration_asset(decoration_path).resize((icon_size, icon_size), Image.Resampling.LANCZOS)
+    y = int(center_y - icon_size / 2)
+    left_x = int(text_left - gap - icon_size)
+    right_x = int(text_right + gap)
+    canvas.paste(icon, (left_x, y), icon)
+    canvas.paste(icon, (right_x, y), icon)
+
 # ==================== 1. 初始化系统状态 ====================
 if 'random_seed' not in st.session_state:
     st.session_state.random_seed = random.randint(0, 99999)
@@ -535,6 +633,7 @@ def render_template_1(canvas, icon_src, main_title, sub_title, font_main, sub_fo
     draw.text((img_width // 2, main_title_y), main_title, fill=colors["main"], font=font_main_large, anchor="mm")
     sub_title_y = main_title_y + line_spacing  
     draw.text((img_width // 2, sub_title_y), sub_title, fill=colors["sub"], font=sub_font_large, anchor="mm")
+    paste_template1_decoration(canvas, draw, sub_title, sub_font_large, img_width // 2, sub_title_y, raw_rgb, f"{main_title} {sub_title}")
     return canvas
 
 def render_template_2(canvas, icon_src, main_title, sub_title, font_main, sub_font, raw_rgb, colors, custom_tag_text="App Store"):
