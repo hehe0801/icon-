@@ -11,7 +11,7 @@ import os
 import colorsys
 import io
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageChops
+from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageChops, ImageEnhance, ImageOps
 from colorthief import ColorThief
 
 # ====================================================================
@@ -214,6 +214,51 @@ def paste_template1_decoration(canvas, draw, text, font, center_x, center_y, raw
     canvas.paste(icon, (left_x, y), icon)
     canvas.paste(icon, (right_x, y), icon)
 
+
+def fit_cover(image, size):
+    target_w, target_h = size
+    src_w, src_h = image.size
+    scale = max(target_w / src_w, target_h / src_h)
+    resized = image.resize((int(src_w * scale), int(src_h * scale)), Image.Resampling.LANCZOS)
+    left = max(0, (resized.size[0] - target_w) // 2)
+    top = max(0, (resized.size[1] - target_h) // 2)
+    return resized.crop((left, top, left + target_w, top + target_h))
+
+
+def weaken_template5_background(image, size, allow_upscale):
+    target_w, target_h = size
+    image = image.convert("RGB")
+    if allow_upscale:
+        prepared = fit_cover(image, (target_w, target_h))
+    else:
+        if image.size[0] > target_w or image.size[1] > target_h:
+            prepared = ImageOps.contain(image, (target_w, target_h), Image.Resampling.LANCZOS)
+        else:
+            prepared = image.copy()
+        base_color = tuple(int(v) for v in np.array(prepared).reshape(-1, 3).mean(axis=0))
+        base = Image.new("RGB", (target_w, target_h), base_color)
+        base.paste(prepared, ((target_w - prepared.size[0]) // 2, (target_h - prepared.size[1]) // 2))
+        prepared = base
+
+    prepared = ImageEnhance.Color(prepared).enhance(0.42)
+    prepared = ImageEnhance.Contrast(prepared).enhance(0.72)
+    prepared = ImageEnhance.Brightness(prepared).enhance(1.08)
+    prepared = prepared.filter(ImageFilter.GaussianBlur(18))
+    mist = Image.new("RGB", (target_w, target_h), (255, 255, 255))
+    return Image.blend(prepared, mist, 0.28)
+
+
+def fit_font_to_width(font, text, start_size, max_width, min_size=48, stroke_width=0):
+    for font_size in range(start_size, min_size - 1, -4):
+        try:
+            candidate = font.font_variant(size=font_size)
+        except:
+            candidate = font
+        bbox = ImageDraw.Draw(Image.new("RGB", (10, 10))).textbbox((0, 0), text, font=candidate, stroke_width=stroke_width)
+        if bbox[2] - bbox[0] <= max_width:
+            return candidate
+    return candidate
+
 # ==================== 1. 初始化系统状态 ====================
 if 'random_seed' not in st.session_state:
     st.session_state.random_seed = random.randint(0, 99999)
@@ -351,6 +396,14 @@ TEMPLATE_DEFAULTS = {
         "sub_title": "",
         "promo_text": "为低精力人设计的游戏",
         "colors": {"tag": "#FFFFFF", "main": "#FFFFFF", "sub": "#FFFFFF"},
+        "auto_color": False
+    },
+    "模板5：双层图标风": {
+        "mode": "智能批量宣传语",
+        "main_title": "太平凡？换个人生！",
+        "sub_title": "国王人生模拟器来啦",
+        "promo_text": "太平凡？换个人生！\n国王人生模拟器来啦",
+        "colors": {"tag": "#000000", "main": "#FFFFFF", "sub": "#000000"},
         "auto_color": False
     }
 }
@@ -801,6 +854,97 @@ TEMPLATE_REGISTRY = {
     "模板4：app模拟类": render_template_4
 }
 
+def render_template_5(icon_src, main_title, sub_title, font_main, sub_font, raw_rgb, bg_source, bg_image_bytes):
+    img_width, img_height = 1280, 1706
+
+    if bg_source == "template5_uploaded_blur" and bg_image_bytes:
+        bg_img = Image.open(io.BytesIO(bg_image_bytes)).convert("RGB")
+        canvas = weaken_template5_background(bg_img, (img_width, img_height), allow_upscale=False).convert("RGBA")
+    else:
+        canvas = weaken_template5_background(icon_src, (img_width, img_height), allow_upscale=True).convert("RGBA")
+
+    soft_overlay = Image.new("RGBA", (img_width, img_height), (255, 255, 255, 0))
+    overlay_draw = ImageDraw.Draw(soft_overlay)
+    overlay_draw.rectangle((0, 0, img_width, int(img_height * 0.16)), fill=(255, 255, 255, 34))
+    overlay_draw.rectangle((0, int(img_height * 0.62), img_width, img_height), fill=(255, 255, 255, 54))
+    canvas = Image.alpha_composite(canvas, soft_overlay)
+
+    icon_size = int(img_width * 0.64)
+    border = int(icon_size * 0.035)
+    radius = int(icon_size * 0.17)
+    icon_x = (img_width - icon_size) // 2
+    icon_y = int(img_height * 0.055)
+
+    shadow_pad = 78
+    layer_size = icon_size + border * 2 + shadow_pad * 2
+    shadow_layer = Image.new("RGBA", (layer_size, layer_size), (0, 0, 0, 0))
+    shadow_draw = ImageDraw.Draw(shadow_layer)
+    shadow_draw.rounded_rectangle(
+        (
+            shadow_pad,
+            shadow_pad + 18,
+            shadow_pad + icon_size + border * 2,
+            shadow_pad + icon_size + border * 2 + 18
+        ),
+        radius=radius + border,
+        fill=(0, 0, 0, 88)
+    )
+    shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(26))
+
+    icon_card = Image.new("RGBA", (icon_size + border * 2, icon_size + border * 2), (0, 0, 0, 0))
+    card_draw = ImageDraw.Draw(icon_card)
+    card_draw.rounded_rectangle(
+        (0, 0, icon_size + border * 2, icon_size + border * 2),
+        radius=radius + border,
+        fill=(255, 255, 255, 255)
+    )
+
+    icon_scaled = fit_cover(icon_src, (icon_size, icon_size)).convert("RGBA")
+    icon_mask = Image.new("L", (icon_size, icon_size), 0)
+    mask_draw = ImageDraw.Draw(icon_mask)
+    mask_draw.rounded_rectangle((0, 0, icon_size, icon_size), radius=radius, fill=255)
+    icon_rounded = Image.new("RGBA", (icon_size, icon_size), (0, 0, 0, 0))
+    icon_rounded.paste(icon_scaled, (0, 0), icon_mask)
+    icon_card.paste(icon_rounded, (border, border), icon_rounded)
+
+    icon_layer = Image.new("RGBA", (layer_size, layer_size), (0, 0, 0, 0))
+    icon_layer = Image.alpha_composite(icon_layer, shadow_layer)
+    icon_layer.paste(icon_card, (shadow_pad, shadow_pad), icon_card)
+    canvas.paste(icon_layer, (icon_x - border - shadow_pad, icon_y - border - shadow_pad), icon_layer)
+
+    draw = ImageDraw.Draw(canvas)
+    main_stroke = 13
+    sub_stroke = 8
+    main_font = fit_font_to_width(font_main, main_title, 138, int(img_width * 0.92), min_size=72, stroke_width=main_stroke)
+    sub_font_large = fit_font_to_width(font_main, sub_title, 84, int(img_width * 0.72), min_size=46, stroke_width=sub_stroke)
+
+    main_y = int(img_height * 0.600)
+    sub_y = int(img_height * 0.725)
+    draw.text(
+        (img_width // 2, main_y),
+        main_title,
+        fill=(255, 255, 255, 255),
+        font=main_font,
+        anchor="mm",
+        stroke_width=main_stroke,
+        stroke_fill=(0, 0, 0, 255)
+    )
+    paste_template1_decoration(canvas, draw, sub_title, sub_font_large, img_width // 2, sub_y, raw_rgb, f"{main_title} {sub_title}")
+    draw.text(
+        (img_width // 2, sub_y),
+        sub_title,
+        fill=(0, 0, 0, 255),
+        font=sub_font_large,
+        anchor="mm",
+        stroke_width=sub_stroke,
+        stroke_fill=(255, 255, 255, 255)
+    )
+    return canvas.convert("RGB")
+
+
+TEMPLATE_REGISTRY["模板5：双层图标风"] = render_template_5
+
+
 @st.cache_data(show_spinner=False, max_entries=128)
 def render_card_png_bytes(
     icon_bytes,
@@ -845,13 +989,15 @@ def render_card_png_bytes(
         "bg_image_bytes": bg_image_bytes,
         "bg_seed": bg_seed
     }
-    canvas, img_width, img_height = create_background_canvas(bg_config, idx, icon_hue)
-
-    render_function = TEMPLATE_REGISTRY[template_choice]
-    if "模板2" in template_choice:
-        canvas = render_template_2(canvas, icon_src, main_title, sub_title, font_main, sub_font, raw_rgb, colors, tag_text)
+    if "模板5" in template_choice:
+        canvas = render_template_5(icon_src, main_title, sub_title, font_main, sub_font, raw_rgb, bg_source, bg_image_bytes)
     else:
-        canvas = render_function(canvas, icon_src, main_title, sub_title, font_main, sub_font, raw_rgb, colors)
+        canvas, img_width, img_height = create_background_canvas(bg_config, idx, icon_hue)
+        render_function = TEMPLATE_REGISTRY[template_choice]
+        if "模板2" in template_choice:
+            canvas = render_template_2(canvas, icon_src, main_title, sub_title, font_main, sub_font, raw_rgb, colors, tag_text)
+        else:
+            canvas = render_function(canvas, icon_src, main_title, sub_title, font_main, sub_font, raw_rgb, colors)
 
     if output_width and output_width < canvas.size[0]:
         output_height = int(canvas.size[1] * output_width / canvas.size[0])
@@ -937,6 +1083,8 @@ with col_left:
         fixed_bg_templates.append("模板2：背景图库随机匹配")
     if any("模板4" in t for t in selected_templates):
         fixed_bg_templates.append("模板4：智能图库匹配")
+    if any("模板5" in t for t in selected_templates):
+        fixed_bg_templates.append("模板5：双层图标背景")
     if fixed_bg_templates:
         st.info("；".join(fixed_bg_templates))
     bg_source = st.radio("模板1/3背景来源：", ["纯白背景", "AI智能渐变生成", "上传背景图"])
@@ -947,6 +1095,26 @@ with col_left:
         uploaded_bg = st.file_uploader("上传自定义背景大图：", type=["png", "jpg", "jpeg"], key="bg_uploader")
 
     global_background_config = make_background_config(bg_source, bg_type, uploaded_bg)
+
+    template5_uploaded_bg = None
+    template5_background_config = make_background_config("template5_icon_blur")
+    if any("模板5" in t for t in selected_templates):
+        st.markdown("**模板5专属背景**")
+        template5_mode = st.radio(
+            "模板5背景模式：",
+            ["默认icon放大背景", "手动上传新背景"],
+            horizontal=True,
+            key="template5_bg_mode"
+        )
+        if template5_mode == "手动上传新背景":
+            template5_uploaded_bg = st.file_uploader(
+                "上传模板5专用背景图：",
+                type=["png", "jpg", "jpeg"],
+                key="template5_bg_uploader"
+            )
+            template5_background_config = make_background_config("template5_uploaded_blur", uploaded_file=template5_uploaded_bg)
+        else:
+            template5_background_config = make_background_config("template5_icon_blur")
 
     # 📍 [UI名称修改点] 步骤四：批量文案与颜色设置
     st.header("4. 批量文案与颜色设置")
@@ -1040,6 +1208,8 @@ current_render_signature = (
     global_background_config.get("bg_source"),
     global_background_config.get("bg_type"),
     len(global_background_config.get("bg_image_bytes") or b""),
+    template5_background_config.get("bg_source"),
+    len(template5_background_config.get("bg_image_bytes") or b""),
     tuple((file.name, getattr(file, "size", 0)) for file in uploaded_icons)
 )
 if st.session_state.last_render_signature is not None and current_render_signature != st.session_state.last_render_signature:
@@ -1087,6 +1257,8 @@ if uploaded_icons:
                 template_bg_config = make_background_config("模板4智能库")
             elif "模板2" in template_name:
                 template_bg_config = make_background_config("背景文件夹库随机匹配")
+            elif "模板5" in template_name:
+                template_bg_config = template5_background_config.copy()
             else:
                 template_bg_config = global_background_config.copy()
             default_card_config = {
