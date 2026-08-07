@@ -258,6 +258,37 @@ def fit_font_to_width(font, text, start_size, max_width, min_size=48, stroke_wid
             return candidate
     return candidate
 
+
+def make_stroke_text_layer(text, font, fill, stroke_fill, stroke_width):
+    scratch = Image.new("RGBA", (10, 10), (0, 0, 0, 0))
+    scratch_draw = ImageDraw.Draw(scratch)
+    bbox = scratch_draw.textbbox((0, 0), text, font=font, stroke_width=stroke_width)
+    layer_w = max(1, bbox[2] - bbox[0])
+    layer_h = max(1, bbox[3] - bbox[1])
+    layer = Image.new("RGBA", (layer_w, layer_h), (0, 0, 0, 0))
+    layer_draw = ImageDraw.Draw(layer)
+    layer_draw.text(
+        (-bbox[0], -bbox[1]),
+        text,
+        fill=fill,
+        font=font,
+        stroke_width=stroke_width,
+        stroke_fill=stroke_fill
+    )
+    alpha_bbox = layer.getchannel("A").getbbox()
+    if alpha_bbox:
+        layer = layer.crop(alpha_bbox)
+    return layer
+
+
+def paste_centered_stroke_text(canvas, center_xy, text, font, fill, stroke_fill, stroke_width):
+    center_x, center_y = center_xy
+    layer = make_stroke_text_layer(text, font, fill, stroke_fill, stroke_width)
+    x = int(round(center_x - layer.size[0] / 2))
+    y = int(round(center_y - layer.size[1] / 2))
+    canvas.paste(layer, (x, y), layer)
+    return (x, y, x + layer.size[0], y + layer.size[1])
+
 # ==================== 1. 初始化系统状态 ====================
 if 'random_seed' not in st.session_state:
     st.session_state.random_seed = random.randint(0, 99999)
@@ -912,25 +943,25 @@ def render_template_5(icon_src, main_title, sub_title, font_main, sub_font, raw_
     sub_font_large = fit_font_to_width(font_main, sub_title, 78, int(img_width * 0.72), min_size=44, stroke_width=sub_stroke)
 
     main_y = int(img_height * 0.675)
-    sub_y = int(img_height * 0.765)
-    draw.text(
+    sub_y = int(img_height * 0.775)
+    paste_centered_stroke_text(
+        canvas,
         (img_width // 2, main_y),
         main_title,
-        fill=(255, 255, 255, 255),
-        font=main_font,
-        anchor="mm",
-        stroke_width=main_stroke,
-        stroke_fill=(0, 0, 0, 255)
+        main_font,
+        (255, 255, 255, 255),
+        (0, 0, 0, 255),
+        main_stroke
     )
     paste_template1_decoration(canvas, draw, sub_title, sub_font_large, img_width // 2, sub_y, raw_rgb, f"{main_title} {sub_title}")
-    draw.text(
+    paste_centered_stroke_text(
+        canvas,
         (img_width // 2, sub_y),
         sub_title,
-        fill=(0, 0, 0, 255),
-        font=sub_font_large,
-        anchor="mm",
-        stroke_width=sub_stroke,
-        stroke_fill=(255, 255, 255, 255)
+        sub_font_large,
+        (0, 0, 0, 255),
+        (255, 255, 255, 255),
+        sub_stroke
     )
     return canvas.convert("RGB")
 
