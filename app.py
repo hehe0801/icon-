@@ -231,14 +231,7 @@ def weaken_template5_background(image, size, allow_upscale):
     if allow_upscale:
         prepared = fit_cover(image, (target_w, target_h))
     else:
-        if image.size[0] > target_w or image.size[1] > target_h:
-            prepared = ImageOps.contain(image, (target_w, target_h), Image.Resampling.LANCZOS)
-        else:
-            prepared = image.copy()
-        base_color = tuple(int(v) for v in np.array(prepared).reshape(-1, 3).mean(axis=0))
-        base = Image.new("RGB", (target_w, target_h), base_color)
-        base.paste(prepared, ((target_w - prepared.size[0]) // 2, (target_h - prepared.size[1]) // 2))
-        prepared = base
+        prepared = fit_cover(image, (target_w, target_h))
 
     avg_rgb = tuple(int(v) for v in np.array(prepared).reshape(-1, 3).mean(axis=0))
     h, _, s = colorsys.rgb_to_hls(avg_rgb[0] / 255.0, avg_rgb[1] / 255.0, avg_rgb[2] / 255.0)
@@ -870,7 +863,7 @@ def render_template_5(icon_src, main_title, sub_title, font_main, sub_font, raw_
         canvas = weaken_template5_background(icon_src, (img_width, img_height), allow_upscale=True).convert("RGBA")
 
     icon_size = int(img_width * 0.64)
-    border = int(icon_size * 0.035)
+    border = int(icon_size * 0.026)
     radius = int(icon_size * 0.17)
     icon_x = (img_width - icon_size) // 2
     icon_y = int(img_height * 0.075)
@@ -915,11 +908,11 @@ def render_template_5(icon_src, main_title, sub_title, font_main, sub_font, raw_
     draw = ImageDraw.Draw(canvas)
     main_stroke = 13
     sub_stroke = 8
-    main_font = fit_font_to_width(font_main, main_title, 128, int(img_width * 0.88), min_size=68, stroke_width=main_stroke)
+    main_font = fit_font_to_width(font_main, main_title, 138, int(img_width * 0.92), min_size=72, stroke_width=main_stroke)
     sub_font_large = fit_font_to_width(font_main, sub_title, 78, int(img_width * 0.72), min_size=44, stroke_width=sub_stroke)
 
-    main_y = int(img_height * 0.645)
-    sub_y = int(img_height * 0.775)
+    main_y = int(img_height * 0.675)
+    sub_y = int(img_height * 0.765)
     draw.text(
         (img_width // 2, main_y),
         main_title,
