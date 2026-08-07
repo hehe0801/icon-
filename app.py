@@ -240,12 +240,18 @@ def weaken_template5_background(image, size, allow_upscale):
         base.paste(prepared, ((target_w - prepared.size[0]) // 2, (target_h - prepared.size[1]) // 2))
         prepared = base
 
-    prepared = ImageEnhance.Color(prepared).enhance(0.42)
-    prepared = ImageEnhance.Contrast(prepared).enhance(0.72)
-    prepared = ImageEnhance.Brightness(prepared).enhance(1.08)
-    prepared = prepared.filter(ImageFilter.GaussianBlur(18))
+    avg_rgb = tuple(int(v) for v in np.array(prepared).reshape(-1, 3).mean(axis=0))
+    h, _, s = colorsys.rgb_to_hls(avg_rgb[0] / 255.0, avg_rgb[1] / 255.0, avg_rgb[2] / 255.0)
+    tint_rgb = tuple(int(v * 255) for v in colorsys.hls_to_rgb(h, 0.66, max(0.24, min(0.48, s + 0.12))))
+
+    prepared = ImageEnhance.Color(prepared).enhance(0.62)
+    prepared = ImageEnhance.Contrast(prepared).enhance(0.82)
+    prepared = ImageEnhance.Brightness(prepared).enhance(1.03)
+    prepared = prepared.filter(ImageFilter.GaussianBlur(9))
+    tint_layer = Image.new("RGB", (target_w, target_h), tint_rgb)
+    prepared = Image.blend(prepared, tint_layer, 0.22)
     mist = Image.new("RGB", (target_w, target_h), (255, 255, 255))
-    return Image.blend(prepared, mist, 0.28)
+    return Image.blend(prepared, mist, 0.08)
 
 
 def fit_font_to_width(font, text, start_size, max_width, min_size=48, stroke_width=0):
@@ -863,17 +869,11 @@ def render_template_5(icon_src, main_title, sub_title, font_main, sub_font, raw_
     else:
         canvas = weaken_template5_background(icon_src, (img_width, img_height), allow_upscale=True).convert("RGBA")
 
-    soft_overlay = Image.new("RGBA", (img_width, img_height), (255, 255, 255, 0))
-    overlay_draw = ImageDraw.Draw(soft_overlay)
-    overlay_draw.rectangle((0, 0, img_width, int(img_height * 0.16)), fill=(255, 255, 255, 34))
-    overlay_draw.rectangle((0, int(img_height * 0.62), img_width, img_height), fill=(255, 255, 255, 54))
-    canvas = Image.alpha_composite(canvas, soft_overlay)
-
     icon_size = int(img_width * 0.64)
     border = int(icon_size * 0.035)
     radius = int(icon_size * 0.17)
     icon_x = (img_width - icon_size) // 2
-    icon_y = int(img_height * 0.055)
+    icon_y = int(img_height * 0.075)
 
     shadow_pad = 78
     layer_size = icon_size + border * 2 + shadow_pad * 2
@@ -915,11 +915,11 @@ def render_template_5(icon_src, main_title, sub_title, font_main, sub_font, raw_
     draw = ImageDraw.Draw(canvas)
     main_stroke = 13
     sub_stroke = 8
-    main_font = fit_font_to_width(font_main, main_title, 138, int(img_width * 0.92), min_size=72, stroke_width=main_stroke)
-    sub_font_large = fit_font_to_width(font_main, sub_title, 84, int(img_width * 0.72), min_size=46, stroke_width=sub_stroke)
+    main_font = fit_font_to_width(font_main, main_title, 128, int(img_width * 0.88), min_size=68, stroke_width=main_stroke)
+    sub_font_large = fit_font_to_width(font_main, sub_title, 78, int(img_width * 0.72), min_size=44, stroke_width=sub_stroke)
 
-    main_y = int(img_height * 0.600)
-    sub_y = int(img_height * 0.725)
+    main_y = int(img_height * 0.645)
+    sub_y = int(img_height * 0.775)
     draw.text(
         (img_width // 2, main_y),
         main_title,
