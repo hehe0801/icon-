@@ -939,8 +939,8 @@ def render_template_5(icon_src, main_title, sub_title, font_main, sub_font, raw_
     draw = ImageDraw.Draw(canvas)
     main_stroke = 13
     sub_stroke = 9
-    main_font = fit_font_to_width(font_main, main_title, 163, int(img_width * 0.94), min_size=84, stroke_width=main_stroke)
-    sub_font_large = fit_font_to_width(font_main, sub_title, 95, int(img_width * 0.84), min_size=66, stroke_width=sub_stroke)
+    main_font = fit_font_to_width(font_main, main_title, 170, int(img_width * 0.94), min_size=84, stroke_width=main_stroke)
+    sub_font_large = fit_font_to_width(font_main, sub_title, 90, int(img_width * 0.84), min_size=66, stroke_width=sub_stroke)
 
     main_y = int(img_height * 0.67)
     sub_y = int(img_height * 0.800)
