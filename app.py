@@ -884,6 +884,24 @@ TEMPLATE_REGISTRY = {
     "模板4：app模拟类": render_template_4
 }
 
+TEMPLATE5_MAIN_FONT_START = 200
+TEMPLATE5_SUB_FONT_START = 90
+TEMPLATE5_MAIN_Y_RATIO = 0.67
+TEMPLATE5_SUB_Y_RATIO = 0.800
+
+
+def get_template_render_cache_key(template_choice):
+    if "模板5" in template_choice:
+        return (
+            "template5",
+            TEMPLATE5_MAIN_FONT_START,
+            TEMPLATE5_SUB_FONT_START,
+            TEMPLATE5_MAIN_Y_RATIO,
+            TEMPLATE5_SUB_Y_RATIO
+        )
+    return ("default",)
+
+
 def render_template_5(icon_src, main_title, sub_title, font_main, sub_font, raw_rgb, bg_source, bg_image_bytes):
     img_width, img_height = 1280, 1706
 
@@ -939,11 +957,11 @@ def render_template_5(icon_src, main_title, sub_title, font_main, sub_font, raw_
     draw = ImageDraw.Draw(canvas)
     main_stroke = 13
     sub_stroke = 9
-    main_font = fit_font_to_width(font_main, main_title,90, int(img_width * 0.94), min_size=84, stroke_width=main_stroke)
-    sub_font_large = fit_font_to_width(font_main, sub_title, 90, int(img_width * 0.84), min_size=66, stroke_width=sub_stroke)
+    main_font = fit_font_to_width(font_main, main_title, TEMPLATE5_MAIN_FONT_START, int(img_width * 0.985), min_size=84, stroke_width=main_stroke)
+    sub_font_large = fit_font_to_width(font_main, sub_title, TEMPLATE5_SUB_FONT_START, int(img_width * 0.86), min_size=66, stroke_width=sub_stroke)
 
-    main_y = int(img_height * 0.67)
-    sub_y = int(img_height * 0.800)
+    main_y = int(img_height * TEMPLATE5_MAIN_Y_RATIO)
+    sub_y = int(img_height * TEMPLATE5_SUB_Y_RATIO)
     paste_centered_stroke_text(
         canvas,
         (img_width // 2, main_y),
@@ -1234,6 +1252,7 @@ current_render_signature = (
     len(global_background_config.get("bg_image_bytes") or b""),
     template5_background_config.get("bg_source"),
     len(template5_background_config.get("bg_image_bytes") or b""),
+    get_template_render_cache_key(template_choice),
     tuple((file.name, getattr(file, "size", 0)) for file in uploaded_icons)
 )
 if st.session_state.last_render_signature is not None and current_render_signature != st.session_state.last_render_signature:
