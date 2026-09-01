@@ -335,6 +335,10 @@ def make_stored_uploads(uploaded_files):
     return [StoredUpload(file.name, file.getvalue()) for file in uploaded_files or []]
 
 
+def uploads_signature(uploaded_files):
+    return tuple((file.name, getattr(file, "size", 0)) for file in uploaded_files or [])
+
+
 def move_item_in_list(items, index, direction):
     target = index + direction
     if index < 0 or index >= len(items) or target < 0 or target >= len(items):
@@ -403,8 +407,18 @@ if 'template_copy_configs' not in st.session_state:
     st.session_state.template_copy_configs = {}
 if 'template6_icon_mode' not in st.session_state:
     st.session_state.template6_icon_mode = "通用 Icon"
+if 'general_uploaded_icons' not in st.session_state:
+    st.session_state.general_uploaded_icons = []
+if 'general_uploaded_source_signature' not in st.session_state:
+    st.session_state.general_uploaded_source_signature = None
+if 'icon_uploader_nonce' not in st.session_state:
+    st.session_state.icon_uploader_nonce = 0
 if 'template6_uploaded_icons' not in st.session_state:
     st.session_state.template6_uploaded_icons = []
+if 'template6_uploaded_source_signature' not in st.session_state:
+    st.session_state.template6_uploaded_source_signature = None
+if 'template6_icon_uploader_nonce' not in st.session_state:
+    st.session_state.template6_icon_uploader_nonce = 0
 
 
 # ==================== 2. 全局独立辅助工具 ====================
@@ -416,7 +430,16 @@ def mask_rounded_rectangle(img, radius):
     return img
 
 def make_rounded_icon_cover(icon_src, size, radius_ratio=0.155):
-    icon_scaled = icon_src.resize((size, size), Image.Resampling.LANCZOS)
+    icon_rgba = icon_src.convert("RGBA")
+    if icon_rgba.getchannel("A").getbbox():
+        rgb = icon_rgba.convert("RGB").resize((size, size), Image.Resampling.LANCZOS)
+        alpha = icon_rgba.getchannel("A").resize((size, size), Image.Resampling.LANCZOS)
+        matte = Image.new("RGB", (size, size), (255, 255, 255))
+        matte.paste(rgb, (0, 0))
+        icon_scaled = matte.convert("RGBA")
+        icon_scaled.putalpha(alpha)
+    else:
+        icon_scaled = icon_rgba.resize((size, size), Image.Resampling.LANCZOS)
     mask_scale = 3
     mask = Image.new('L', (size * mask_scale, size * mask_scale), 0)
     mask_draw = ImageDraw.Draw(mask)
@@ -427,7 +450,7 @@ def make_rounded_icon_cover(icon_src, size, radius_ratio=0.155):
     )
     mask = mask.resize((size, size), Image.Resampling.LANCZOS)
     icon_final = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    icon_final.paste(icon_scaled, (0, 0))
+    icon_final.paste(icon_scaled, (0, 0), icon_scaled)
     icon_final.putalpha(mask)
     return icon_final
 
@@ -1120,15 +1143,15 @@ def render_template_6(canvas, icon_src_group, main_title, font_main, colors):
     for idx, (icon_src, (x, y)) in enumerate(zip(icon_src_group, positions)):
         icon_size = tile_w
         icon = make_rounded_icon_cover(icon_src, icon_size, radius_ratio=0.18).convert("RGBA")
-        icon_shadow = Image.new("RGBA", (icon_size + 104, icon_size + 104), (0, 0, 0, 0))
+        icon_shadow = Image.new("RGBA", (icon_size + 96, icon_size + 96), (0, 0, 0, 0))
         shadow_draw = ImageDraw.Draw(icon_shadow)
         shadow_draw.rounded_rectangle(
-            (28, 34, 28 + icon_size, 34 + icon_size),
+            (24, 28, 24 + icon_size, 28 + icon_size),
             radius=int(icon_size * 0.18),
-            fill=(0, 0, 0, 84)
+            fill=(0, 0, 0, 100)
         )
-        icon_shadow = icon_shadow.filter(ImageFilter.GaussianBlur(8))
-        canvas.paste(icon_shadow, (x - 28, y - 22), icon_shadow)
+        icon_shadow = icon_shadow.filter(ImageFilter.GaussianBlur(4))
+        canvas.paste(icon_shadow, (x - 24, y - 18), icon_shadow)
         canvas.paste(icon, (x, y), icon)
 
     return canvas
@@ -1263,15 +1286,21 @@ with col_left:
             horizontal=True,
             key="template6_icon_mode"
         )
-    if "icon_uploader_nonce" not in st.session_state:
-        st.session_state.icon_uploader_nonce = 0
-    uploaded_icons = st.file_uploader(
+    uploaded_icons_raw = st.file_uploader(
         "选择 Icon 图像",
         type=["png", "jpg", "jpeg"],
         accept_multiple_files=True,
         key=f"icon_uploader_{st.session_state.icon_uploader_nonce}"
     )
     
+    if uploaded_icons_raw is not None:
+        general_signature = uploads_signature(uploaded_icons_raw)
+        if general_signature != st.session_state.general_uploaded_source_signature:
+            st.session_state.general_uploaded_source_signature = general_signature
+            st.session_state.general_uploaded_icons = make_stored_uploads(uploaded_icons_raw)
+
+    uploaded_icons = list(st.session_state.general_uploaded_icons)
+
     if uploaded_icons and len(uploaded_icons) > 9:
         st.error("最多支持处理 9 张 Icon，超出部分将被自动截断。")
     
@@ -1279,16 +1308,34 @@ with col_left:
     clear_general_icon_col, general_icon_status_col = st.columns([1, 4])
     with clear_general_icon_col:
         if uploaded_icons and st.button("清空通用 Icon", use_container_width=True):
+            st.session_state.general_uploaded_icons = []
+            st.session_state.general_uploaded_source_signature = None
             st.session_state.icon_uploader_nonce += 1
             trigger_rerun()
     with general_icon_status_col:
         if uploaded_icons:
             st.success(f"已载入 {len(uploaded_icons)} 张 Icon")
+        if uploaded_icons:
+            st.caption("通用 Icon 顺序：可在这里直接上下调整")
+            for idx, icon_item in enumerate(uploaded_icons):
+                left, mid, right = st.columns([0.8, 5.6, 1.4])
+                with left:
+                    st.markdown(f"**{idx + 1}**")
+                with mid:
+                    st.write(icon_item.name)
+                with right:
+                    up_col, down_col = st.columns(2)
+                    with up_col:
+                        if st.button("↑", key=f"general_up_{idx}", use_container_width=True, disabled=idx == 0):
+                            st.session_state.general_uploaded_icons = move_item_in_list(st.session_state.general_uploaded_icons, idx, -1)
+                            trigger_rerun()
+                    with down_col:
+                        if st.button("↓", key=f"general_down_{idx}", use_container_width=True, disabled=idx == len(uploaded_icons) - 1):
+                            st.session_state.general_uploaded_icons = move_item_in_list(st.session_state.general_uploaded_icons, idx, 1)
+                            trigger_rerun()
 
     uploaded_icons_template6 = list(st.session_state.template6_uploaded_icons)
     if any("模板6" in t for t in selected_templates) and template6_icon_mode == "模板6专属":
-        if "template6_icon_uploader_nonce" not in st.session_state:
-            st.session_state.template6_icon_uploader_nonce = 0
         template6_uploaded_raw = st.file_uploader(
             "选择模板6专属 Icon 图像",
             type=["png", "jpg", "jpeg"],
@@ -1296,8 +1343,8 @@ with col_left:
             key=f"icon_uploader_template6_{st.session_state.template6_icon_uploader_nonce}"
         )
         if template6_uploaded_raw is not None:
-            raw_signature = tuple((file.name, getattr(file, "size", 0)) for file in template6_uploaded_raw)
-            if raw_signature != st.session_state.get("template6_uploaded_source_signature"):
+            raw_signature = uploads_signature(template6_uploaded_raw)
+            if raw_signature != st.session_state.template6_uploaded_source_signature:
                 st.session_state.template6_uploaded_source_signature = raw_signature
                 st.session_state.template6_uploaded_icons = make_stored_uploads(template6_uploaded_raw)
                 uploaded_icons_template6 = list(st.session_state.template6_uploaded_icons)
@@ -1312,8 +1359,7 @@ with col_left:
                     trigger_rerun()
             with count_col:
                 st.success(f"模板6专属素材已载入 {len(uploaded_icons_template6)} 张 Icon，将按 4 张自动分组。")
-
-            st.caption("模板6 专属顺序：")
+            st.caption("模板6 专属顺序：可在这里直接上下调整")
             for idx, icon_item in enumerate(uploaded_icons_template6):
                 left, mid, right = st.columns([0.8, 5.6, 1.4])
                 with left:
@@ -1321,12 +1367,12 @@ with col_left:
                 with mid:
                     st.write(icon_item.name)
                 with right:
-                    b1, b2 = st.columns(2)
-                    with b1:
+                    up_col, down_col = st.columns(2)
+                    with up_col:
                         if st.button("↑", key=f"template6_up_{idx}", use_container_width=True, disabled=idx == 0):
                             st.session_state.template6_uploaded_icons = move_item_in_list(st.session_state.template6_uploaded_icons, idx, -1)
                             trigger_rerun()
-                    with b2:
+                    with down_col:
                         if st.button("↓", key=f"template6_down_{idx}", use_container_width=True, disabled=idx == len(uploaded_icons_template6) - 1):
                             st.session_state.template6_uploaded_icons = move_item_in_list(st.session_state.template6_uploaded_icons, idx, 1)
                             trigger_rerun()
