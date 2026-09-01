@@ -1065,9 +1065,9 @@ def render_template_6(canvas, icon_src_group, main_title, font_main, colors):
         (0, 0, 0, 255),
         (255, 255, 255, 255),
         title_stroke,
-        shadow_offset=(0, 8),
-        shadow_blur=7,
-        shadow_alpha=84
+        shadow_offset=(0, 6),
+        shadow_blur=6,
+        shadow_alpha=78
     )
 
     gap_x = int(img_width * TEMPLATE6_GRID_GAP_X_RATIO)
@@ -1095,7 +1095,7 @@ def render_template_6(canvas, icon_src_group, main_title, font_main, colors):
             radius=int(icon_size * 0.18),
             fill=(0, 0, 0, 70)
         )
-        icon_shadow = icon_shadow.filter(ImageFilter.GaussianBlur(14))
+        icon_shadow = icon_shadow.filter(ImageFilter.GaussianBlur(12))
         canvas.paste(icon_shadow, (x - 36, y - 28), icon_shadow)
         canvas.paste(icon, (x, y), icon)
 
@@ -1657,7 +1657,7 @@ if has_any_icons:
 with col_right:
     st.markdown("### 效果预览图")
     
-    if uploaded_icons and generated_canvases:
+    if generated_canvases:
         st.header("生成结果控制")
 
         st.markdown(
