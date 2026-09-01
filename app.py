@@ -936,7 +936,7 @@ TEMPLATE5_MAIN_FONT_START = 200
 TEMPLATE5_SUB_FONT_START = 90
 TEMPLATE5_MAIN_Y_RATIO = 0.67
 TEMPLATE5_SUB_Y_RATIO = 0.800
-TEMPLATE6_TITLE_FONT_START = 190
+TEMPLATE6_TITLE_FONT_START = 180
 TEMPLATE6_TITLE_Y_RATIO = 0.16
 TEMPLATE6_GRID_TOP_RATIO = 0.34
 TEMPLATE6_GRID_MARGIN_X_RATIO = 0.11
@@ -1065,9 +1065,9 @@ def render_template_6(canvas, icon_src_group, main_title, font_main, colors):
         (0, 0, 0, 255),
         (255, 255, 255, 255),
         title_stroke,
-        shadow_offset=(0, 10),
-        shadow_blur=10,
-        shadow_alpha=72
+        shadow_offset=(0, 8),
+        shadow_blur=7,
+        shadow_alpha=84
     )
 
     gap_x = int(img_width * TEMPLATE6_GRID_GAP_X_RATIO)
@@ -1095,7 +1095,7 @@ def render_template_6(canvas, icon_src_group, main_title, font_main, colors):
             radius=int(icon_size * 0.18),
             fill=(0, 0, 0, 70)
         )
-        icon_shadow = icon_shadow.filter(ImageFilter.GaussianBlur(18))
+        icon_shadow = icon_shadow.filter(ImageFilter.GaussianBlur(14))
         canvas.paste(icon_shadow, (x - 36, y - 28), icon_shadow)
         canvas.paste(icon, (x, y), icon)
 
