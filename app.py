@@ -289,6 +289,37 @@ def paste_centered_stroke_text(canvas, center_xy, text, font, fill, stroke_fill,
     canvas.paste(layer, (x, y), layer)
     return (x, y, x + layer.size[0], y + layer.size[1])
 
+
+def paste_shadowed_stroke_text(canvas, center_xy, text, font, fill, stroke_fill, stroke_width, shadow_offset=(0, 12), shadow_blur=12, shadow_alpha=70):
+    center_x, center_y = center_xy
+    layer = make_stroke_text_layer(text, font, fill, stroke_fill, stroke_width)
+    alpha = layer.getchannel("A")
+    shadow = Image.new("RGBA", layer.size, (0, 0, 0, 0))
+    shadow_alpha_mask = alpha.point(lambda a: int(a * shadow_alpha / 255))
+    shadow.putalpha(shadow_alpha_mask)
+    shadow = shadow.filter(ImageFilter.GaussianBlur(shadow_blur))
+    shadow_x = int(round(center_x - layer.size[0] / 2 + shadow_offset[0]))
+    shadow_y = int(round(center_y - layer.size[1] / 2 + shadow_offset[1]))
+    layer_x = int(round(center_x - layer.size[0] / 2))
+    layer_y = int(round(center_y - layer.size[1] / 2))
+    canvas.paste(shadow, (shadow_x, shadow_y), shadow)
+    canvas.paste(layer, (layer_x, layer_y), layer)
+    return (layer_x, layer_y, layer_x + layer.size[0], layer_y + layer.size[1])
+
+
+def group_icons_with_fill(uploaded_files, group_size=4):
+    files = list(uploaded_files or [])
+    if not files:
+        return []
+
+    groups = []
+    for start in range(0, len(files), group_size):
+        chunk = files[start:start + group_size]
+        if len(chunk) < group_size:
+            chunk = chunk + [chunk[-1]] * (group_size - len(chunk))
+        groups.append(chunk)
+    return groups
+
 # ==================== 1. 初始化系统状态 ====================
 if 'random_seed' not in st.session_state:
     st.session_state.random_seed = random.randint(0, 99999)
@@ -340,6 +371,8 @@ if 'template_multiselect_value' not in st.session_state:
     st.session_state.template_multiselect_value = st.session_state.selected_templates or ["模板1：质感大icon"]
 if 'template_copy_configs' not in st.session_state:
     st.session_state.template_copy_configs = {}
+if 'template6_icon_mode' not in st.session_state:
+    st.session_state.template6_icon_mode = "通用 Icon"
 
 
 # ==================== 2. 全局独立辅助工具 ====================
@@ -434,6 +467,14 @@ TEMPLATE_DEFAULTS = {
         "sub_title": "国王人生模拟器来啦",
         "promo_text": "太平凡？换个人生！\n国王人生模拟器来啦",
         "colors": {"tag": "#000000", "main": "#FFFFFF", "sub": "#000000"},
+        "auto_color": False
+    },
+    "模板6：四宫格图标风": {
+        "mode": "单组文案应用该模板全部图片",
+        "main_title": "IOS游戏推荐",
+        "sub_title": "",
+        "promo_text": "IOS游戏推荐",
+        "colors": {"tag": "#000000", "main": "#000000", "sub": "#000000"},
         "auto_color": False
     }
 }
@@ -564,7 +605,7 @@ def individual_key(name, idx):
     return f"{name}_{idx}_{version}"
 
 def get_template_promo_line_count(template_choice):
-    if "模板4" in template_choice:
+    if "模板4" in template_choice or "模板6" in template_choice:
         return 1
     return 2
 
@@ -602,6 +643,13 @@ def get_copywriting_for_card(idx, template_choice, mode, game_name, single_main,
         return {
             "main_title": promo_line_1,
             "sub_title": game_name,
+            "tag_text": game_name
+        }
+
+    if "模板6" in template_choice:
+        return {
+            "main_title": promo_line_1,
+            "sub_title": "",
             "tag_text": game_name
         }
 
@@ -888,6 +936,12 @@ TEMPLATE5_MAIN_FONT_START = 200
 TEMPLATE5_SUB_FONT_START = 90
 TEMPLATE5_MAIN_Y_RATIO = 0.67
 TEMPLATE5_SUB_Y_RATIO = 0.800
+TEMPLATE6_TITLE_FONT_START = 190
+TEMPLATE6_TITLE_Y_RATIO = 0.16
+TEMPLATE6_GRID_TOP_RATIO = 0.34
+TEMPLATE6_GRID_MARGIN_X_RATIO = 0.11
+TEMPLATE6_GRID_GAP_X_RATIO = 0.075
+TEMPLATE6_GRID_GAP_Y_RATIO = 0.085
 
 
 def get_template_render_cache_key(template_choice):
@@ -898,6 +952,16 @@ def get_template_render_cache_key(template_choice):
             TEMPLATE5_SUB_FONT_START,
             TEMPLATE5_MAIN_Y_RATIO,
             TEMPLATE5_SUB_Y_RATIO
+        )
+    if "模板6" in template_choice:
+        return (
+            "template6",
+            TEMPLATE6_TITLE_FONT_START,
+            TEMPLATE6_TITLE_Y_RATIO,
+            TEMPLATE6_GRID_TOP_RATIO,
+            TEMPLATE6_GRID_MARGIN_X_RATIO,
+            TEMPLATE6_GRID_GAP_X_RATIO,
+            TEMPLATE6_GRID_GAP_Y_RATIO
         )
     return ("default",)
 
@@ -987,6 +1051,60 @@ def render_template_5(icon_src, main_title, sub_title, font_main, sub_font, raw_
 TEMPLATE_REGISTRY["模板5：双层图标风"] = render_template_5
 
 
+def render_template_6(canvas, icon_src_group, main_title, font_main, colors):
+    img_width, img_height = canvas.size
+
+    title_stroke = 14
+    title_font = fit_font_to_width(font_main, main_title, TEMPLATE6_TITLE_FONT_START, int(img_width * 0.92), min_size=86, stroke_width=title_stroke)
+    title_y = int(img_height * TEMPLATE6_TITLE_Y_RATIO)
+    paste_shadowed_stroke_text(
+        canvas,
+        (img_width // 2, title_y),
+        main_title,
+        title_font,
+        (0, 0, 0, 255),
+        (255, 255, 255, 255),
+        title_stroke,
+        shadow_offset=(0, 10),
+        shadow_blur=10,
+        shadow_alpha=72
+    )
+
+    gap_x = int(img_width * TEMPLATE6_GRID_GAP_X_RATIO)
+    gap_y = int(img_height * TEMPLATE6_GRID_GAP_Y_RATIO)
+    margin_x = int(img_width * TEMPLATE6_GRID_MARGIN_X_RATIO)
+    first_row_y = int(img_height * TEMPLATE6_GRID_TOP_RATIO)
+    tile_w = int((img_width - margin_x * 2 - gap_x) / 2)
+    tile_h = tile_w
+    second_row_y = first_row_y + tile_h + gap_y
+
+    positions = [
+        (margin_x, first_row_y),
+        (margin_x + tile_w + gap_x, first_row_y),
+        (margin_x, second_row_y),
+        (margin_x + tile_w + gap_x, second_row_y)
+    ]
+
+    for idx, (icon_src, (x, y)) in enumerate(zip(icon_src_group, positions)):
+        icon_size = tile_w
+        icon = make_rounded_icon_cover(icon_src, icon_size, radius_ratio=0.18).convert("RGBA")
+        icon_shadow = Image.new("RGBA", (icon_size + 120, icon_size + 120), (0, 0, 0, 0))
+        shadow_draw = ImageDraw.Draw(icon_shadow)
+        shadow_draw.rounded_rectangle(
+            (36, 46, 36 + icon_size, 46 + icon_size),
+            radius=int(icon_size * 0.18),
+            fill=(0, 0, 0, 70)
+        )
+        icon_shadow = icon_shadow.filter(ImageFilter.GaussianBlur(18))
+        canvas.paste(icon_shadow, (x - 36, y - 28), icon_shadow)
+        canvas.paste(icon, (x, y), icon)
+
+    return canvas
+
+
+TEMPLATE_REGISTRY["模板6：四宫格图标风"] = render_template_6
+
+
 @st.cache_data(show_spinner=False, max_entries=128)
 def render_card_png_bytes(
     icon_bytes,
@@ -1007,10 +1125,16 @@ def render_card_png_bytes(
     bg_seed
 ):
     random.seed(card_seed)
-    icon_src = Image.open(io.BytesIO(icon_bytes)).convert("RGBA")
+    icon_src = None
+    icon_src_group = None
+    if "模板6" in template_choice:
+        icon_src_group = [Image.open(io.BytesIO(one_icon_bytes)).convert("RGBA") for one_icon_bytes in icon_bytes]
+    else:
+        icon_src = Image.open(io.BytesIO(icon_bytes)).convert("RGBA")
 
     try:
-        color_thief = ColorThief(io.BytesIO(icon_bytes))
+        color_source_bytes = icon_bytes[0] if "模板6" in template_choice else icon_bytes
+        color_thief = ColorThief(io.BytesIO(color_source_bytes))
         raw_rgb = color_thief.get_color(quality=1)
         icon_hue, icon_l, icon_s = colorsys.rgb_to_hls(raw_rgb[0]/255.0, raw_rgb[1]/255.0, raw_rgb[2]/255.0)
     except:
@@ -1033,6 +1157,9 @@ def render_card_png_bytes(
     }
     if "模板5" in template_choice:
         canvas = render_template_5(icon_src, main_title, sub_title, font_main, sub_font, raw_rgb, bg_source, bg_image_bytes)
+    elif "模板6" in template_choice:
+        canvas, img_width, img_height = create_background_canvas(bg_config, idx, icon_hue)
+        canvas = render_template_6(canvas, icon_src_group, main_title, font_main, colors)
     else:
         canvas, img_width, img_height = create_background_canvas(bg_config, idx, icon_hue)
         render_function = TEMPLATE_REGISTRY[template_choice]
@@ -1095,7 +1222,16 @@ with col_left:
 
     # 📍 [UI名称修改点] 步骤二：上传 Icon
     st.header("2. 上传游戏 Icon")
-    st.markdown('<div class="step-hint">支持 PNG、JPG，可一次上传多张，最多处理 9 张。</div>', unsafe_allow_html=True)
+    st.markdown('<div class="step-hint">支持 PNG、JPG；通用 Icon 最多 9 张，模板6 可切换专属素材池并按 4 张自动成组。</div>', unsafe_allow_html=True)
+    uploaded_icons_template6 = []
+    template6_icon_mode = st.session_state.template6_icon_mode
+    if any("模板6" in t for t in selected_templates):
+        template6_icon_mode = st.radio(
+            "模板6 Icon 来源：",
+            ["通用 Icon", "模板6专属"],
+            horizontal=True,
+            key="template6_icon_mode"
+        )
     uploaded_icons = st.file_uploader("选择 Icon 图像", type=["png", "jpg", "jpeg"], accept_multiple_files=True, key="icon_uploader")
     
     if uploaded_icons and len(uploaded_icons) > 9:
@@ -1104,6 +1240,16 @@ with col_left:
     uploaded_icons = uploaded_icons[:9]
     if uploaded_icons:
         st.success(f"已载入 {len(uploaded_icons)} 张 Icon")
+
+    if any("模板6" in t for t in selected_templates) and template6_icon_mode == "模板6专属":
+        uploaded_icons_template6 = st.file_uploader(
+            "选择模板6专属 Icon 图像",
+            type=["png", "jpg", "jpeg"],
+            accept_multiple_files=True,
+            key="icon_uploader_template6"
+        )
+        if uploaded_icons_template6:
+            st.success(f"模板6专属素材已载入 {len(uploaded_icons_template6)} 张 Icon，将按 4 张自动分组。")
 
     st.session_state.fast_preview_mode = st.toggle(
         "快速预览模式",
@@ -1193,12 +1339,16 @@ with col_left:
                     key=f"promo_text_{template_name}"
                 )
                 promo_groups = parse_promo_groups(template_cfg["promo_text"], line_count)
-                if uploaded_icons:
-                    st.caption(f"已解析 {len(promo_groups)} 组，将按上传顺序匹配 {len(uploaded_icons)} 张 Icon。")
+                effective_icon_count = len(uploaded_icons_template6) if ("模板6" in template_name and template6_icon_mode == "模板6专属" and uploaded_icons_template6) else len(uploaded_icons)
+                if effective_icon_count:
+                    st.caption(f"已解析 {len(promo_groups)} 组，将按上传顺序匹配 {effective_icon_count} 张 Icon。")
             else:
                 if "模板4" in template_name:
                     template_cfg["main_title"] = st.text_input("上方宣传语：", value=template_cfg["main_title"], key=f"main_title_{template_name}")
                     template_cfg["sub_title"] = global_game_name
+                elif "模板6" in template_name:
+                    template_cfg["main_title"] = st.text_input("宣传语：", value=template_cfg["main_title"], key=f"main_title_{template_name}")
+                    template_cfg["sub_title"] = ""
                 else:
                     template_cfg["main_title"] = st.text_input("宣传语第一行：", value=template_cfg["main_title"], key=f"main_title_{template_name}")
                     template_cfg["sub_title"] = st.text_input("宣传语第二行：", value=template_cfg["sub_title"], key=f"sub_title_{template_name}")
@@ -1217,6 +1367,12 @@ with col_left:
                     template_cfg["colors"]["main"] = c1.color_picker("上方宣传语", template_cfg["colors"].get("main", "#FFFFFF"), key=f"color_main_{template_name}")
                     template_cfg["colors"]["sub"] = c2.color_picker("游戏名", template_cfg["colors"].get("sub", "#FFFFFF"), key=f"color_sub_{template_name}")
                     template_cfg["colors"]["tag"] = template_cfg["colors"]["sub"]
+            elif "模板6" in template_name:
+                with st.expander("文字配色管理", expanded=True):
+                    c1 = st.columns(1)[0]
+                    template_cfg["colors"]["main"] = c1.color_picker("标题颜色", template_cfg["colors"].get("main", "#000000"), key=f"color_main_{template_name}")
+                    template_cfg["colors"]["sub"] = template_cfg["colors"]["main"]
+                    template_cfg["colors"]["tag"] = template_cfg["colors"]["main"]
             else:
                 with st.expander("文字配色管理", expanded=True):
                     c1, c2 = st.columns(2)
@@ -1253,7 +1409,9 @@ current_render_signature = (
     template5_background_config.get("bg_source"),
     len(template5_background_config.get("bg_image_bytes") or b""),
     get_template_render_cache_key(template_choice),
-    tuple((file.name, getattr(file, "size", 0)) for file in uploaded_icons)
+    tuple((file.name, getattr(file, "size", 0)) for file in uploaded_icons),
+    st.session_state.template6_icon_mode if any("模板6" in t for t in selected_templates) else None,
+    tuple((file.name, getattr(file, "size", 0)) for file in (uploaded_icons_template6 or []))
 )
 if st.session_state.last_render_signature is not None and current_render_signature != st.session_state.last_render_signature:
     st.session_state.prepare_hd_downloads = False
@@ -1267,7 +1425,9 @@ generated_canvases = []
 generated_by_template = {}
 hd_image_bytes_map = {}
 
-if uploaded_icons:
+has_any_icons = bool(uploaded_icons) or (any("模板6" in t for t in selected_templates) and bool(uploaded_icons_template6))
+
+if has_any_icons:
     font_map = {
         "可爱休闲风": {"bold": "fonts/cute_bold.ttf", "regular": "fonts/cute_regular.ttf"},
         "硬核竞技风": {"bold": "fonts/hardcore_bold.ttf", "regular": "fonts/hardcore_regular.ttf"},
@@ -1283,108 +1443,214 @@ if uploaded_icons:
         template_runtime = template_copy_runtime[template_name]
         copy_cfg = template_runtime["config"]
         promo_groups = template_runtime["promo_groups"]
+        if "模板6" in template_name:
+            template6_files = uploaded_icons_template6 if (st.session_state.template6_icon_mode == "模板6专属" and uploaded_icons_template6) else uploaded_icons
+            template6_groups = group_icons_with_fill(template6_files, 4)
+            if not template6_groups and uploaded_icons:
+                template6_groups = group_icons_with_fill(uploaded_icons, 4)
 
-        for idx, single_icon in enumerate(uploaded_icons):
-            card_id = get_card_id(template_name, idx)
-            card_copy = get_copywriting_for_card(
-                idx,
-                template_name,
-                copy_cfg["mode"],
-                st.session_state.batch_game_name,
-                copy_cfg["main_title"],
-                copy_cfg["sub_title"],
-                promo_groups
-            )
+            for group_idx, group_files in enumerate(template6_groups):
+                card_id = get_card_id(template_name, group_idx)
+                card_copy = get_copywriting_for_card(
+                    group_idx,
+                    template_name,
+                    copy_cfg["mode"],
+                    st.session_state.batch_game_name,
+                    copy_cfg["main_title"],
+                    copy_cfg["sub_title"],
+                    promo_groups
+                )
 
-            if "模板4" in template_name:
-                template_bg_config = make_background_config("模板4智能库")
-            elif "模板2" in template_name:
-                template_bg_config = make_background_config("背景文件夹库随机匹配")
-            elif "模板5" in template_name:
-                template_bg_config = template5_background_config.copy()
-            else:
                 template_bg_config = global_background_config.copy()
-            default_card_config = {
-                "main_title": card_copy["main_title"],
-                "sub_title": card_copy["sub_title"],
-                "tag_text": card_copy["tag_text"],
-                "colors": copy_cfg["colors"].copy(),
-                "auto_color": copy_cfg.get("auto_color", False),
-                "background": template_bg_config
-            }
-            default_card_config["background"]["bg_seed"] = st.session_state.random_seed + idx
+                default_card_config = {
+                    "main_title": card_copy["main_title"],
+                    "sub_title": card_copy["sub_title"],
+                    "tag_text": card_copy["tag_text"],
+                    "colors": copy_cfg["colors"].copy(),
+                    "auto_color": copy_cfg.get("auto_color", False),
+                    "background": template_bg_config
+                }
+                default_card_config["background"]["bg_seed"] = st.session_state.random_seed + group_idx
 
-            if card_id not in st.session_state.individual_configs:
-                st.session_state.individual_configs[card_id] = default_card_config
-            elif card_id not in st.session_state.forked_cards:
-                st.session_state.individual_configs[card_id] = default_card_config
-                st.session_state.individual_configs[card_id]["background"]["bg_seed"] = st.session_state.random_seed + idx
-            
-            cfg = st.session_state.individual_configs[card_id]
-            if "background" not in cfg:
-                cfg["background"] = template_bg_config
-                cfg["background"]["bg_seed"] = st.session_state.random_seed + idx
-            elif card_id not in st.session_state.forked_cards and "模板2" in template_name:
-                cfg["background"] = template_bg_config
-                cfg["background"]["bg_seed"] = st.session_state.random_seed + idx
-            if "auto_color" not in cfg:
-                cfg["auto_color"] = copy_cfg.get("auto_color", False)
+                if card_id not in st.session_state.individual_configs:
+                    st.session_state.individual_configs[card_id] = default_card_config
+                elif card_id not in st.session_state.forked_cards:
+                    st.session_state.individual_configs[card_id] = default_card_config
+                    st.session_state.individual_configs[card_id]["background"]["bg_seed"] = st.session_state.random_seed + group_idx
 
-            icon_bytes = single_icon.getvalue()
-            bg_cfg = cfg.get("background", template_bg_config)
-            card_seed = bg_cfg.get("bg_seed", st.session_state.random_seed + idx)
-            render_args = (
-                icon_bytes,
-                idx,
-                card_seed,
-                template_name,
-                chosen_bold_path,
-                chosen_regular_path,
-                cfg["main_title"],
-                cfg["sub_title"],
-                cfg["tag_text"],
-                tuple(sorted(cfg["colors"].items())),
-                cfg.get("auto_color", False),
-                bg_cfg.get("bg_source", "纯白背景"),
-                bg_cfg.get("bg_type", "同色清爽渐变"),
-                bg_cfg.get("bg_image_bytes"),
-                card_seed
-            )
-            preview_width = 520 if st.session_state.fast_preview_mode else 1280
-            rendered_png = render_card_png_bytes(
-                icon_bytes,
-                idx,
-                card_seed,
-                preview_width,
-                template_name,
-                chosen_bold_path,
-                chosen_regular_path,
-                cfg["main_title"],
-                cfg["sub_title"],
-                cfg["tag_text"],
-                tuple(sorted(cfg["colors"].items())),
-                cfg.get("auto_color", False),
-                bg_cfg.get("bg_source", "纯白背景"),
-                bg_cfg.get("bg_type", "同色清爽渐变"),
-                bg_cfg.get("bg_image_bytes"),
-                card_seed
-            )
-            canvas = Image.open(io.BytesIO(rendered_png)).convert("RGB").copy()
+                cfg = st.session_state.individual_configs[card_id]
+                if "background" not in cfg:
+                    cfg["background"] = template_bg_config
+                    cfg["background"]["bg_seed"] = st.session_state.random_seed + group_idx
+                if "auto_color" not in cfg:
+                    cfg["auto_color"] = copy_cfg.get("auto_color", False)
 
-            item = {
-                "template": template_name,
-                "icon_idx": idx,
-                "card_id": card_id,
-                "name": single_icon.name,
-                "canvas": canvas,
-                "render_args": render_args
-            }
-            generated_canvases.append(item)
-            generated_by_template[template_name].append(item)
+                icon_bytes_group = tuple(one_file.getvalue() for one_file in group_files)
+                first_icon_src = Image.open(io.BytesIO(icon_bytes_group[0])).convert("RGBA")
+                try:
+                    color_thief = ColorThief(io.BytesIO(icon_bytes_group[0]))
+                    raw_rgb = color_thief.get_color(quality=1)
+                    icon_hue, _, _ = colorsys.rgb_to_hls(raw_rgb[0]/255.0, raw_rgb[1]/255.0, raw_rgb[2]/255.0)
+                except:
+                    raw_rgb = (230, 45, 45)
+                    icon_hue = 0.0
 
-            if st.session_state.prepare_hd_downloads:
-                hd_png = render_card_png_bytes(*render_args[:3], 1280, *render_args[3:])
-                hd_image_bytes_map[card_id] = hd_png
+                bg_cfg = cfg.get("background", template_bg_config)
+                card_seed = bg_cfg.get("bg_seed", st.session_state.random_seed + group_idx)
+                render_args = (
+                    icon_bytes_group,
+                    group_idx,
+                    card_seed,
+                    template_name,
+                    chosen_bold_path,
+                    chosen_regular_path,
+                    cfg["main_title"],
+                    cfg["sub_title"],
+                    cfg["tag_text"],
+                    tuple(sorted(cfg["colors"].items())),
+                    cfg.get("auto_color", False),
+                    bg_cfg.get("bg_source", "纯白背景"),
+                    bg_cfg.get("bg_type", "同色清爽渐变"),
+                    bg_cfg.get("bg_image_bytes"),
+                    card_seed
+                )
+                preview_width = 520 if st.session_state.fast_preview_mode else 1280
+                rendered_png = render_card_png_bytes(
+                    icon_bytes_group,
+                    group_idx,
+                    card_seed,
+                    preview_width,
+                    template_name,
+                    chosen_bold_path,
+                    chosen_regular_path,
+                    cfg["main_title"],
+                    cfg["sub_title"],
+                    cfg["tag_text"],
+                    tuple(sorted(cfg["colors"].items())),
+                    cfg.get("auto_color", False),
+                    bg_cfg.get("bg_source", "纯白背景"),
+                    bg_cfg.get("bg_type", "同色清爽渐变"),
+                    bg_cfg.get("bg_image_bytes"),
+                    card_seed
+                )
+                canvas = Image.open(io.BytesIO(rendered_png)).convert("RGB").copy()
+
+                item = {
+                    "template": template_name,
+                    "icon_idx": group_idx,
+                    "card_id": card_id,
+                    "name": f"group_{group_idx + 1}",
+                    "canvas": canvas,
+                    "render_args": render_args
+                }
+                generated_canvases.append(item)
+                generated_by_template[template_name].append(item)
+
+                if st.session_state.prepare_hd_downloads:
+                    hd_png = render_card_png_bytes(*render_args[:3], 1280, *render_args[3:])
+                    hd_image_bytes_map[card_id] = hd_png
+        else:
+            for idx, single_icon in enumerate(uploaded_icons):
+                card_id = get_card_id(template_name, idx)
+                card_copy = get_copywriting_for_card(
+                    idx,
+                    template_name,
+                    copy_cfg["mode"],
+                    st.session_state.batch_game_name,
+                    copy_cfg["main_title"],
+                    copy_cfg["sub_title"],
+                    promo_groups
+                )
+
+                if "模板4" in template_name:
+                    template_bg_config = make_background_config("模板4智能库")
+                elif "模板2" in template_name:
+                    template_bg_config = make_background_config("背景文件夹库随机匹配")
+                elif "模板5" in template_name:
+                    template_bg_config = template5_background_config.copy()
+                else:
+                    template_bg_config = global_background_config.copy()
+                default_card_config = {
+                    "main_title": card_copy["main_title"],
+                    "sub_title": card_copy["sub_title"],
+                    "tag_text": card_copy["tag_text"],
+                    "colors": copy_cfg["colors"].copy(),
+                    "auto_color": copy_cfg.get("auto_color", False),
+                    "background": template_bg_config
+                }
+                default_card_config["background"]["bg_seed"] = st.session_state.random_seed + idx
+
+                if card_id not in st.session_state.individual_configs:
+                    st.session_state.individual_configs[card_id] = default_card_config
+                elif card_id not in st.session_state.forked_cards:
+                    st.session_state.individual_configs[card_id] = default_card_config
+                    st.session_state.individual_configs[card_id]["background"]["bg_seed"] = st.session_state.random_seed + idx
+                
+                cfg = st.session_state.individual_configs[card_id]
+                if "background" not in cfg:
+                    cfg["background"] = template_bg_config
+                    cfg["background"]["bg_seed"] = st.session_state.random_seed + idx
+                elif card_id not in st.session_state.forked_cards and "模板2" in template_name:
+                    cfg["background"] = template_bg_config
+                    cfg["background"]["bg_seed"] = st.session_state.random_seed + idx
+                if "auto_color" not in cfg:
+                    cfg["auto_color"] = copy_cfg.get("auto_color", False)
+
+                icon_bytes = single_icon.getvalue()
+                bg_cfg = cfg.get("background", template_bg_config)
+                card_seed = bg_cfg.get("bg_seed", st.session_state.random_seed + idx)
+                render_args = (
+                    icon_bytes,
+                    idx,
+                    card_seed,
+                    template_name,
+                    chosen_bold_path,
+                    chosen_regular_path,
+                    cfg["main_title"],
+                    cfg["sub_title"],
+                    cfg["tag_text"],
+                    tuple(sorted(cfg["colors"].items())),
+                    cfg.get("auto_color", False),
+                    bg_cfg.get("bg_source", "纯白背景"),
+                    bg_cfg.get("bg_type", "同色清爽渐变"),
+                    bg_cfg.get("bg_image_bytes"),
+                    card_seed
+                )
+                preview_width = 520 if st.session_state.fast_preview_mode else 1280
+                rendered_png = render_card_png_bytes(
+                    icon_bytes,
+                    idx,
+                    card_seed,
+                    preview_width,
+                    template_name,
+                    chosen_bold_path,
+                    chosen_regular_path,
+                    cfg["main_title"],
+                    cfg["sub_title"],
+                    cfg["tag_text"],
+                    tuple(sorted(cfg["colors"].items())),
+                    cfg.get("auto_color", False),
+                    bg_cfg.get("bg_source", "纯白背景"),
+                    bg_cfg.get("bg_type", "同色清爽渐变"),
+                    bg_cfg.get("bg_image_bytes"),
+                    card_seed
+                )
+                canvas = Image.open(io.BytesIO(rendered_png)).convert("RGB").copy()
+
+                item = {
+                    "template": template_name,
+                    "icon_idx": idx,
+                    "card_id": card_id,
+                    "name": single_icon.name,
+                    "canvas": canvas,
+                    "render_args": render_args
+                }
+                generated_canvases.append(item)
+                generated_by_template[template_name].append(item)
+
+                if st.session_state.prepare_hd_downloads:
+                    hd_png = render_card_png_bytes(*render_args[:3], 1280, *render_args[3:])
+                    hd_image_bytes_map[card_id] = hd_png
 
 
 # ==================== 5. 右侧渲染结果展示（2K 弹性工作区） ====================
