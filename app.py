@@ -377,6 +377,21 @@ def build_thumbnail_data_uri(uploaded_file, max_size=(120, 120)):
         return ""
 
 
+def render_icon_preview_grid(uploaded_files, columns=4, key_prefix="icon_preview"):
+    files = list(uploaded_files or [])
+    if not files:
+        return
+
+    cols = st.columns(min(columns, max(1, len(files))))
+    for idx, file in enumerate(files):
+        with cols[idx % len(cols)]:
+            try:
+                st.image(Image.open(io.BytesIO(file.getvalue())).convert("RGBA"), use_container_width=True)
+            except:
+                st.write("预览失败")
+            st.caption(file.name)
+
+
 def build_sortable_custom_style(uploaded_files, prefix):
     cards = list(uploaded_files or [])
     if not cards:
@@ -1433,7 +1448,8 @@ with col_left:
             st.session_state.general_uploaded_icons = reorder_uploads_by_names(uploaded_icons, sorted_general_names)
             uploaded_icons = list(st.session_state.general_uploaded_icons)
     elif uploaded_icons:
-        st.caption("当前环境没有拖拽组件，已保留素材顺序。")
+        st.caption("当前部署还没装好拖拽组件，先显示预览图。把 requirements.txt 一起推上 GitHub 并重新部署后，拖拽排序才会启用。")
+        render_icon_preview_grid(uploaded_icons)
 
     uploaded_icons_template6 = list(st.session_state.template6_uploaded_icons)
     if any("模板6" in t for t in selected_templates) and template6_icon_mode == "模板6专属":
@@ -1473,7 +1489,8 @@ with col_left:
                     st.session_state.template6_uploaded_icons = reorder_uploads_by_names(uploaded_icons_template6, sorted_template6_names)
                     uploaded_icons_template6 = list(st.session_state.template6_uploaded_icons)
             else:
-                st.caption("当前环境没有拖拽组件，已保留素材顺序。")
+                st.caption("当前部署还没装好拖拽组件，先显示预览图。把 requirements.txt 一起推上 GitHub 并重新部署后，拖拽排序才会启用。")
+                render_icon_preview_grid(uploaded_icons_template6)
 
     st.session_state.fast_preview_mode = st.toggle(
         "快速预览模式",
