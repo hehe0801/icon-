@@ -10,9 +10,16 @@ import random
 import os
 import colorsys
 import io
+import base64
+import hashlib
+from collections import deque
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageChops, ImageEnhance, ImageOps
 from colorthief import ColorThief
+try:
+    from streamlit_sortables import sort_items
+except ImportError:
+    sort_items = None
 
 # ====================================================================
 # 🔴 【核心设置】Streamlit 配置与 2K 极简皮肤注入
@@ -337,6 +344,103 @@ def make_stored_uploads(uploaded_files):
 
 def uploads_signature(uploaded_files):
     return tuple((file.name, getattr(file, "size", 0)) for file in uploaded_files or [])
+
+
+def reorder_uploads_by_names(uploaded_files, ordered_names):
+    buckets = {}
+    for file in uploaded_files or []:
+        buckets.setdefault(file.name, deque()).append(file)
+
+    reordered = []
+    for name in ordered_names or []:
+        queue = buckets.get(name)
+        if queue:
+            reordered.append(queue.popleft())
+
+    leftovers = []
+    for file in uploaded_files or []:
+        queue = buckets.get(file.name)
+        if queue and file in queue:
+            queue.remove(file)
+            leftovers.append(file)
+    return reordered + leftovers
+
+
+def build_thumbnail_data_uri(uploaded_file, max_size=(120, 120)):
+    try:
+        image = Image.open(io.BytesIO(uploaded_file.getvalue())).convert("RGBA")
+        image.thumbnail(max_size, Image.Resampling.LANCZOS)
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        return "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("utf-8")
+    except:
+        return ""
+
+
+def build_sortable_custom_style(uploaded_files, prefix):
+    cards = list(uploaded_files or [])
+    if not cards:
+        return ""
+
+    css = [
+        """
+        .sortable-component {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: flex-start;
+        }
+        .sortable-component.vertical {
+            display: flex;
+            flex-wrap: nowrap;
+        }
+        .sortable-container {
+            width: 100%;
+        }
+        .sortable-container-body {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: flex-start;
+            padding-top: 4px;
+        }
+        .sortable-item {
+            width: 118px;
+            min-height: 126px;
+            border-radius: 10px;
+            border: 1px solid #d1d5db;
+            background-color: #ffffff;
+            background-repeat: no-repeat;
+            background-position: center 12px;
+            background-size: 68px 68px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+            padding: 82px 8px 10px 8px;
+            font-size: 11px;
+            line-height: 1.25;
+            text-align: center;
+            color: #111827;
+            word-break: break-all;
+        }
+        .sortable-item:hover {
+            border-color: #9ca3af;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.10);
+        }
+        .sortable-item.dragging {
+            opacity: 0.88;
+        }
+        """
+    ]
+    for idx, file in enumerate(cards, start=1):
+        thumb = build_thumbnail_data_uri(file)
+        if thumb:
+            css.append(
+                f"""
+                .sortable-component .sortable-container-body > .sortable-item:nth-child({idx}) {{
+                    background-image: url("{thumb}");
+                }}
+                """
+            )
+    return "\n".join(css)
 
 
 def move_item_in_list(items, index, direction):
@@ -1315,24 +1419,21 @@ with col_left:
     with general_icon_status_col:
         if uploaded_icons:
             st.success(f"已载入 {len(uploaded_icons)} 张 Icon")
-        if uploaded_icons:
-            st.caption("通用 Icon 顺序：可在这里直接上下调整")
-            for idx, icon_item in enumerate(uploaded_icons):
-                left, mid, right = st.columns([0.8, 5.6, 1.4])
-                with left:
-                    st.markdown(f"**{idx + 1}**")
-                with mid:
-                    st.write(icon_item.name)
-                with right:
-                    up_col, down_col = st.columns(2)
-                    with up_col:
-                        if st.button("↑", key=f"general_up_{idx}", use_container_width=True, disabled=idx == 0):
-                            st.session_state.general_uploaded_icons = move_item_in_list(st.session_state.general_uploaded_icons, idx, -1)
-                            trigger_rerun()
-                    with down_col:
-                        if st.button("↓", key=f"general_down_{idx}", use_container_width=True, disabled=idx == len(uploaded_icons) - 1):
-                            st.session_state.general_uploaded_icons = move_item_in_list(st.session_state.general_uploaded_icons, idx, 1)
-                            trigger_rerun()
+
+    if uploaded_icons and sort_items is not None:
+        general_names = [file.name for file in uploaded_icons]
+        general_cards_style = build_sortable_custom_style(uploaded_icons, "general")
+        sorted_general_names = sort_items(
+            general_names,
+            direction="horizontal",
+            custom_style=general_cards_style,
+            key=f"general_icon_sorter_{hashlib.md5(repr(st.session_state.general_uploaded_source_signature).encode('utf-8')).hexdigest()}"
+        )
+        if sorted_general_names and sorted_general_names != general_names:
+            st.session_state.general_uploaded_icons = reorder_uploads_by_names(uploaded_icons, sorted_general_names)
+            uploaded_icons = list(st.session_state.general_uploaded_icons)
+    elif uploaded_icons:
+        st.caption("当前环境没有拖拽组件，已保留素材顺序。")
 
     uploaded_icons_template6 = list(st.session_state.template6_uploaded_icons)
     if any("模板6" in t for t in selected_templates) and template6_icon_mode == "模板6专属":
@@ -1359,23 +1460,20 @@ with col_left:
                     trigger_rerun()
             with count_col:
                 st.success(f"模板6专属素材已载入 {len(uploaded_icons_template6)} 张 Icon，将按 4 张自动分组。")
-            st.caption("模板6 专属顺序：可在这里直接上下调整")
-            for idx, icon_item in enumerate(uploaded_icons_template6):
-                left, mid, right = st.columns([0.8, 5.6, 1.4])
-                with left:
-                    st.markdown(f"**{idx + 1}**")
-                with mid:
-                    st.write(icon_item.name)
-                with right:
-                    up_col, down_col = st.columns(2)
-                    with up_col:
-                        if st.button("↑", key=f"template6_up_{idx}", use_container_width=True, disabled=idx == 0):
-                            st.session_state.template6_uploaded_icons = move_item_in_list(st.session_state.template6_uploaded_icons, idx, -1)
-                            trigger_rerun()
-                    with down_col:
-                        if st.button("↓", key=f"template6_down_{idx}", use_container_width=True, disabled=idx == len(uploaded_icons_template6) - 1):
-                            st.session_state.template6_uploaded_icons = move_item_in_list(st.session_state.template6_uploaded_icons, idx, 1)
-                            trigger_rerun()
+            if sort_items is not None:
+                template6_names = [file.name for file in uploaded_icons_template6]
+                template6_cards_style = build_sortable_custom_style(uploaded_icons_template6, "template6")
+                sorted_template6_names = sort_items(
+                    template6_names,
+                    direction="horizontal",
+                    custom_style=template6_cards_style,
+                    key=f"template6_icon_sorter_{hashlib.md5(repr(st.session_state.template6_uploaded_source_signature).encode('utf-8')).hexdigest()}"
+                )
+                if sorted_template6_names and sorted_template6_names != template6_names:
+                    st.session_state.template6_uploaded_icons = reorder_uploads_by_names(uploaded_icons_template6, sorted_template6_names)
+                    uploaded_icons_template6 = list(st.session_state.template6_uploaded_icons)
+            else:
+                st.caption("当前环境没有拖拽组件，已保留素材顺序。")
 
     st.session_state.fast_preview_mode = st.toggle(
         "快速预览模式",
