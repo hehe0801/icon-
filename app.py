@@ -320,6 +320,36 @@ def group_icons_with_fill(uploaded_files, group_size=4):
         groups.append(chunk)
     return groups
 
+
+class StoredUpload:
+    def __init__(self, name, data):
+        self.name = name
+        self._data = data
+        self.size = len(data)
+
+    def getvalue(self):
+        return self._data
+
+
+def make_stored_uploads(uploaded_files):
+    return [StoredUpload(file.name, file.getvalue()) for file in uploaded_files or []]
+
+
+def move_item_in_list(items, index, direction):
+    target = index + direction
+    if index < 0 or index >= len(items) or target < 0 or target >= len(items):
+        return items
+    items = list(items)
+    items[index], items[target] = items[target], items[index]
+    return items
+
+
+def trigger_rerun():
+    if hasattr(st, "rerun"):
+        st.rerun()
+    elif hasattr(st, "experimental_rerun"):
+        st.experimental_rerun()
+
 # ==================== 1. 初始化系统状态 ====================
 if 'random_seed' not in st.session_state:
     st.session_state.random_seed = random.randint(0, 99999)
@@ -373,6 +403,8 @@ if 'template_copy_configs' not in st.session_state:
     st.session_state.template_copy_configs = {}
 if 'template6_icon_mode' not in st.session_state:
     st.session_state.template6_icon_mode = "通用 Icon"
+if 'template6_uploaded_icons' not in st.session_state:
+    st.session_state.template6_uploaded_icons = []
 
 
 # ==================== 2. 全局独立辅助工具 ====================
@@ -1088,15 +1120,15 @@ def render_template_6(canvas, icon_src_group, main_title, font_main, colors):
     for idx, (icon_src, (x, y)) in enumerate(zip(icon_src_group, positions)):
         icon_size = tile_w
         icon = make_rounded_icon_cover(icon_src, icon_size, radius_ratio=0.18).convert("RGBA")
-        icon_shadow = Image.new("RGBA", (icon_size + 120, icon_size + 120), (0, 0, 0, 0))
+        icon_shadow = Image.new("RGBA", (icon_size + 104, icon_size + 104), (0, 0, 0, 0))
         shadow_draw = ImageDraw.Draw(icon_shadow)
         shadow_draw.rounded_rectangle(
-            (36, 46, 36 + icon_size, 46 + icon_size),
+            (28, 34, 28 + icon_size, 34 + icon_size),
             radius=int(icon_size * 0.18),
-            fill=(0, 0, 0, 70)
+            fill=(0, 0, 0, 84)
         )
-        icon_shadow = icon_shadow.filter(ImageFilter.GaussianBlur(12))
-        canvas.paste(icon_shadow, (x - 36, y - 28), icon_shadow)
+        icon_shadow = icon_shadow.filter(ImageFilter.GaussianBlur(8))
+        canvas.paste(icon_shadow, (x - 28, y - 22), icon_shadow)
         canvas.paste(icon, (x, y), icon)
 
     return canvas
@@ -1223,7 +1255,6 @@ with col_left:
     # 📍 [UI名称修改点] 步骤二：上传 Icon
     st.header("2. 上传游戏 Icon")
     st.markdown('<div class="step-hint">支持 PNG、JPG；通用 Icon 最多 9 张，模板6 可切换专属素材池并按 4 张自动成组。</div>', unsafe_allow_html=True)
-    uploaded_icons_template6 = []
     template6_icon_mode = st.session_state.template6_icon_mode
     if any("模板6" in t for t in selected_templates):
         template6_icon_mode = st.radio(
@@ -1232,24 +1263,73 @@ with col_left:
             horizontal=True,
             key="template6_icon_mode"
         )
-    uploaded_icons = st.file_uploader("选择 Icon 图像", type=["png", "jpg", "jpeg"], accept_multiple_files=True, key="icon_uploader")
+    if "icon_uploader_nonce" not in st.session_state:
+        st.session_state.icon_uploader_nonce = 0
+    uploaded_icons = st.file_uploader(
+        "选择 Icon 图像",
+        type=["png", "jpg", "jpeg"],
+        accept_multiple_files=True,
+        key=f"icon_uploader_{st.session_state.icon_uploader_nonce}"
+    )
     
     if uploaded_icons and len(uploaded_icons) > 9:
         st.error("最多支持处理 9 张 Icon，超出部分将被自动截断。")
     
     uploaded_icons = uploaded_icons[:9]
-    if uploaded_icons:
-        st.success(f"已载入 {len(uploaded_icons)} 张 Icon")
+    clear_general_icon_col, general_icon_status_col = st.columns([1, 4])
+    with clear_general_icon_col:
+        if uploaded_icons and st.button("清空通用 Icon", use_container_width=True):
+            st.session_state.icon_uploader_nonce += 1
+            trigger_rerun()
+    with general_icon_status_col:
+        if uploaded_icons:
+            st.success(f"已载入 {len(uploaded_icons)} 张 Icon")
 
+    uploaded_icons_template6 = list(st.session_state.template6_uploaded_icons)
     if any("模板6" in t for t in selected_templates) and template6_icon_mode == "模板6专属":
-        uploaded_icons_template6 = st.file_uploader(
+        if "template6_icon_uploader_nonce" not in st.session_state:
+            st.session_state.template6_icon_uploader_nonce = 0
+        template6_uploaded_raw = st.file_uploader(
             "选择模板6专属 Icon 图像",
             type=["png", "jpg", "jpeg"],
             accept_multiple_files=True,
-            key="icon_uploader_template6"
+            key=f"icon_uploader_template6_{st.session_state.template6_icon_uploader_nonce}"
         )
+        if template6_uploaded_raw is not None:
+            raw_signature = tuple((file.name, getattr(file, "size", 0)) for file in template6_uploaded_raw)
+            if raw_signature != st.session_state.get("template6_uploaded_source_signature"):
+                st.session_state.template6_uploaded_source_signature = raw_signature
+                st.session_state.template6_uploaded_icons = make_stored_uploads(template6_uploaded_raw)
+                uploaded_icons_template6 = list(st.session_state.template6_uploaded_icons)
+
         if uploaded_icons_template6:
-            st.success(f"模板6专属素材已载入 {len(uploaded_icons_template6)} 张 Icon，将按 4 张自动分组。")
+            clear_col, count_col = st.columns([1, 4])
+            with clear_col:
+                if st.button("清空模板6专属", use_container_width=True):
+                    st.session_state.template6_uploaded_icons = []
+                    st.session_state.template6_uploaded_source_signature = None
+                    st.session_state.template6_icon_uploader_nonce += 1
+                    trigger_rerun()
+            with count_col:
+                st.success(f"模板6专属素材已载入 {len(uploaded_icons_template6)} 张 Icon，将按 4 张自动分组。")
+
+            st.caption("模板6 专属顺序：")
+            for idx, icon_item in enumerate(uploaded_icons_template6):
+                left, mid, right = st.columns([0.8, 5.6, 1.4])
+                with left:
+                    st.markdown(f"**{idx + 1}**")
+                with mid:
+                    st.write(icon_item.name)
+                with right:
+                    b1, b2 = st.columns(2)
+                    with b1:
+                        if st.button("↑", key=f"template6_up_{idx}", use_container_width=True, disabled=idx == 0):
+                            st.session_state.template6_uploaded_icons = move_item_in_list(st.session_state.template6_uploaded_icons, idx, -1)
+                            trigger_rerun()
+                    with b2:
+                        if st.button("↓", key=f"template6_down_{idx}", use_container_width=True, disabled=idx == len(uploaded_icons_template6) - 1):
+                            st.session_state.template6_uploaded_icons = move_item_in_list(st.session_state.template6_uploaded_icons, idx, 1)
+                            trigger_rerun()
 
     st.session_state.fast_preview_mode = st.toggle(
         "快速预览模式",
