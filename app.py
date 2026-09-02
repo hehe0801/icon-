@@ -1454,10 +1454,10 @@ def render_template_7(canvas, icon_src, main_title, sub_title, font_main, sub_fo
     img_width, img_height = canvas.size
     draw = ImageDraw.Draw(canvas)
 
-    icon_size = int(img_width * 0.66)
-    icon_border = int(icon_size * 0.024)
+    icon_size = int(img_width * 0.70)
+    icon_border = int(icon_size * 0.022)
     icon_x = (img_width - (icon_size + icon_border * 2)) // 2
-    icon_y = int(img_height * 0.12)
+    icon_y = int(img_height * 0.10)
 
     icon_card = make_outlined_icon_card(
         icon_src,
@@ -1466,7 +1466,7 @@ def render_template_7(canvas, icon_src, main_title, sub_title, font_main, sub_fo
         radius_ratio=0.19,
         shadow_alpha=0,
         shadow_blur=0,
-        inner_shadow_alpha=52
+        inner_shadow_alpha=0
     )
     canvas.paste(icon_card, (icon_x, icon_y), icon_card)
 
@@ -1478,24 +1478,23 @@ def render_template_7(canvas, icon_src, main_title, sub_title, font_main, sub_fo
 
     draw.text((img_width // 2, main_y), main_title, fill=colors["main"], font=main_font, anchor="mm")
 
-    shadow_layer = make_stroke_text_layer(sub_title, sub_font_main, (255, 255, 255, 255), (255, 255, 255, 255), 1)
-    shadow_layer = transform_italic_layer(shadow_layer, shear_x=0.16)
-    shadow_alpha = shadow_layer.getchannel("A").point(lambda a: int(a * 110 / 255))
-    shadow_layer.putalpha(shadow_alpha)
-    shadow_x = int(round(img_width / 2 - shadow_layer.size[0] / 2 + 4))
-    shadow_y = int(round(sub_y - shadow_layer.size[1] / 2 + 4))
-    canvas.paste(shadow_layer, (shadow_x, shadow_y), shadow_layer)
-
-    paste_text_layer(
-        canvas,
-        (img_width // 2, sub_y),
-        sub_title,
-        sub_font_main,
-        colors["sub"],
-        stroke_fill=colors["sub"],
-        stroke_width=0,
-        italic=False
+    sub_text_layer = make_stroke_text_layer(sub_title, sub_font_main, colors["sub"], colors["sub"], 0)
+    sub_text_layer = transform_italic_layer(sub_text_layer, shear_x=0.16)
+    box_pad_x = int(img_width * 0.036)
+    box_pad_y = int(img_height * 0.010)
+    box_w = sub_text_layer.size[0] + box_pad_x * 2
+    box_h = sub_text_layer.size[1] + box_pad_y * 2
+    box_layer = Image.new("RGBA", (box_w, box_h), (0, 0, 0, 0))
+    box_draw = ImageDraw.Draw(box_layer)
+    box_draw.rounded_rectangle(
+        (0, 0, box_w - 1, box_h - 1),
+        radius=int(box_h * 0.42),
+        fill=(255, 255, 255, 255)
     )
+    box_layer.paste(sub_text_layer, (box_pad_x, box_pad_y), sub_text_layer)
+    box_x = int(round(img_width / 2 - box_w / 2))
+    box_y = int(round(sub_y - box_h / 2))
+    canvas.paste(box_layer, (box_x, box_y), box_layer)
     return canvas
 
 
