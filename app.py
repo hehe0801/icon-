@@ -15,6 +15,7 @@ import uuid
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageChops, ImageEnhance, ImageOps
 from colorthief import ColorThief
+from streamlit_sortables import sort_items
 
 # ====================================================================
 # 🔴 【核心设置】Streamlit 配置与 2K 极简皮肤注入
@@ -123,6 +124,20 @@ st.markdown("""
         [data-testid="stFileUploader"] li,
         [data-testid="stFileUploader"] small,
         [data-testid="stFileUploaderPagination"] {
+            display: none !important;
+        }
+        div[data-testid="stFileUploader"] > div:not([data-testid="stFileUploaderDropzone"]),
+        div[data-testid="stFileUploader"] > div:not([data-testid="stFileUploaderDropzone"]) *,
+        div[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] ~ *,
+        div[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] ~ * * {
+            display: none !important;
+        }
+        [data-testid="stFileUploader"] [data-testid*="stFileUploaderFile"] ,
+        [data-testid="stFileUploader"] [data-testid*="stFileUploaderFile"] * ,
+        [data-testid="stFileUploader"] [data-testid*="FileCard"] ,
+        [data-testid="stFileUploader"] [data-testid*="FileCard"] * ,
+        [data-testid="stFileUploader"] [data-testid*="FileName"] ,
+        [data-testid="stFileUploader"] [data-testid*="FileName"] * {
             display: none !important;
         }
     </style>
@@ -405,37 +420,6 @@ def render_icon_preview_grid(uploaded_files, columns=4, key_prefix="icon_preview
             st.caption(file.name)
 
 
-def render_upload_card_grid(uploaded_files, state_key, columns=4):
-    files = list(uploaded_files or [])
-    if not files:
-        return
-    for start in range(0, len(files), columns):
-        row_files = files[start:start + columns]
-        row_cols = st.columns(len(row_files))
-        for offset, file in enumerate(row_files):
-            card_col = row_cols[offset]
-            with card_col:
-                with st.container(border=True):
-                    header_left, header_right = st.columns([7, 1])
-                    with header_right:
-                        if st.button("×", key=f"{state_key}_delete_{file.uid}", help="删除这张图"):
-                            remaining = [one for one in files if getattr(one, "uid", None) != file.uid]
-                            if state_key == "general":
-                                st.session_state.general_uploaded_icons = remaining
-                                st.session_state.general_uploaded_source_signature = uploads_signature(remaining)
-                            else:
-                                st.session_state.template6_uploaded_icons = remaining
-                                st.session_state.template6_uploaded_source_signature = uploads_signature(remaining)
-                            trigger_rerun()
-                    try:
-                        thumb = Image.open(io.BytesIO(file.getvalue())).convert("RGBA")
-                        thumb.thumbnail((40, 40), Image.Resampling.LANCZOS)
-                        st.image(thumb, width=40)
-                    except:
-                        st.write("预览失败")
-                    st.caption(f"{start + offset + 1}")
-
-
 def build_sortable_custom_style(uploaded_files, prefix):
     cards = list(uploaded_files or [])
     if not cards:
@@ -446,8 +430,9 @@ def build_sortable_custom_style(uploaded_files, prefix):
         .sortable-component {
             display: flex;
             flex-wrap: wrap;
-            gap: 10px;
+            gap: 8px;
             align-items: flex-start;
+            width: 100%;
         }
         .sortable-component.vertical {
             display: flex;
@@ -455,27 +440,28 @@ def build_sortable_custom_style(uploaded_files, prefix):
         }
         .sortable-container {
             width: 100%;
+            padding: 0;
         }
         .sortable-container-body {
             display: flex;
             flex-wrap: wrap;
-            gap: 10px;
+            gap: 8px;
             align-items: flex-start;
-            padding-top: 4px;
+            padding-top: 2px;
         }
         .sortable-item {
-            width: 96px;
-            min-height: 102px;
-            border-radius: 8px;
+            width: 82px;
+            min-height: 84px;
+            border-radius: 10px;
             border: 1px solid #d1d5db;
             background-color: #ffffff;
             background-repeat: no-repeat;
-            background-position: center 8px;
-            background-size: 34px 34px;
+            background-position: center 10px;
+            background-size: 30px 30px;
             box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
-            padding: 48px 6px 8px 6px;
+            padding: 46px 6px 8px 6px;
             font-size: 10px;
-            line-height: 1.25;
+            line-height: 1.1;
             text-align: center;
             color: #111827;
             word-break: break-all;
@@ -501,6 +487,34 @@ def build_sortable_custom_style(uploaded_files, prefix):
                 """
             )
     return "\n".join(css)
+
+
+def render_sortable_upload_cards(uploaded_files, state_key):
+    files = list(uploaded_files or [])
+    if not files:
+        return files
+
+    item_labels = [str(i + 1) for i in range(len(files))]
+    custom_style = build_sortable_custom_style(files, state_key)
+    st.markdown(custom_style, unsafe_allow_html=True)
+    sorted_labels = sort_items(
+        item_labels,
+        custom_style=custom_style,
+        key=f"{state_key}_sortable"
+    )
+    if sorted_labels != item_labels:
+        try:
+            reordered = [files[int(label) - 1] for label in sorted_labels]
+        except Exception:
+            reordered = files
+        if state_key == "general":
+            st.session_state.general_uploaded_icons = reordered
+            st.session_state.general_uploaded_source_signature = uploads_signature(reordered)
+        else:
+            st.session_state.template6_uploaded_icons = reordered
+            st.session_state.template6_uploaded_source_signature = uploads_signature(reordered)
+        trigger_rerun()
+    return files
 
 
 def move_item_in_list(items, index, direction):
@@ -1469,6 +1483,7 @@ with col_left:
         st.error("最多支持处理 9 张 Icon，超出部分将被自动截断。")
     
     uploaded_icons = uploaded_icons[:9]
+    render_sortable_upload_cards(uploaded_icons, "general")
     clear_general_icon_col, general_icon_status_col = st.columns([1, 4])
     with clear_general_icon_col:
         if uploaded_icons and st.button("清空通用 Icon", use_container_width=True):
@@ -1479,8 +1494,6 @@ with col_left:
     with general_icon_status_col:
         if uploaded_icons:
             st.success(f"已载入 {len(uploaded_icons)} 张 Icon")
-    if uploaded_icons:
-        render_upload_card_grid(uploaded_icons, "general", columns=4)
 
     uploaded_icons_template6 = list(st.session_state.template6_uploaded_icons)
     if any("模板6" in t for t in selected_templates) and template6_icon_mode == "模板6专属":
@@ -1507,8 +1520,7 @@ with col_left:
                     trigger_rerun()
             with count_col:
                 st.success(f"模板6专属素材已载入 {len(uploaded_icons_template6)} 张 Icon，将按 4 张自动分组。")
-            if uploaded_icons_template6:
-                render_upload_card_grid(uploaded_icons_template6, "template6", columns=4)
+            render_sortable_upload_cards(uploaded_icons_template6, "template6")
 
     st.session_state.fast_preview_mode = st.toggle(
         "快速预览模式",
