@@ -877,17 +877,17 @@ def make_solid_background_color(icon_hue, style_name="干净明亮", bg_seed=Non
 
     if style_name == "马卡龙":
         relation = pick_weighted_choice(
-            [("同类色", 52), ("邻近色", 38), ("对比色", 10)],
+            [("同类色", 58), ("邻近色", 32), ("对比色", 10)],
             rng
         )
-        sat_range = (0.20, 0.42)
-        light_range = (0.86, 0.96)
+        sat_range = (0.16, 0.34)
+        light_range = (0.88, 0.97)
     else:
         relation = pick_weighted_choice(
-            [("同类色", 46), ("邻近色", 40), ("对比色", 14)],
+            [("同类色", 50), ("邻近色", 36), ("对比色", 14)],
             rng
         )
-        sat_range = (0.38, 0.72)
+        sat_range = (0.34, 0.70)
         light_range = (0.74, 0.90)
 
     if relation == "同类色":
@@ -903,7 +903,7 @@ def make_solid_background_color(icon_hue, style_name="干净明亮", bg_seed=Non
     rgb = colorsys.hls_to_rgb(hue, lightness, saturation)
     return tuple(max(0, min(255, int(v * 255))) for v in rgb), relation
 
-def make_background_config(source, gradient_type="同色清爽渐变", uploaded_file=None, solid_style="干净明亮"):
+def make_background_config(source, gradient_type="同色清爽渐变", uploaded_file=None, solid_style="纯白"):
     return {
         "bg_source": source,
         "bg_type": gradient_type,
@@ -913,7 +913,7 @@ def make_background_config(source, gradient_type="同色清爽渐变", uploaded_
 
 def create_background_canvas(bg_config, idx, icon_hue):
     img_width, img_height = 1280, 1706
-    source = bg_config.get("bg_source", "纯白背景")
+    source = bg_config.get("bg_source", "纯色背景")
     gradient_type = bg_config.get("bg_type", "同色清爽渐变")
     bg_seed = bg_config.get("bg_seed")
     if bg_seed is not None:
@@ -938,16 +938,15 @@ def create_background_canvas(bg_config, idx, icon_hue):
             return canvas, canvas.size[0], canvas.size[1]
         return Image.new("RGB", (img_width, img_height), color=(255, 255, 255)), img_width, img_height
 
-    if source == "纯白背景":
-        return Image.new("RGB", (img_width, img_height), color=(255, 255, 255)), img_width, img_height
-
-    if source == "纯黑背景":
-        return Image.new("RGB", (img_width, img_height), color=(0, 0, 0)), img_width, img_height
-
     if source == "纯色背景":
-        color_style = bg_config.get("solid_style", "干净明亮")
-        rgb, _ = make_solid_background_color(icon_hue, color_style, bg_seed=bg_seed, idx=idx)
-        return Image.new("RGB", (img_width, img_height), color=rgb), img_width, img_height
+        solid_style = bg_config.get("solid_style", "纯白")
+        if solid_style == "纯白":
+            return Image.new("RGB", (img_width, img_height), color=(255, 255, 255)), img_width, img_height
+        if solid_style == "纯黑":
+            return Image.new("RGB", (img_width, img_height), color=(0, 0, 0)), img_width, img_height
+        if solid_style in ("明亮彩色", "马卡龙"):
+            rgb, _ = make_solid_background_color(icon_hue, solid_style, bg_seed=bg_seed, idx=idx)
+            return Image.new("RGB", (img_width, img_height), color=rgb), img_width, img_height
         return Image.new("RGB", (img_width, img_height), color=(255, 255, 255)), img_width, img_height
 
     if source == "上传背景图" and bg_config.get("bg_image_bytes"):
@@ -1788,9 +1787,9 @@ with col_left:
     st.session_state.lock_background = st.toggle("锁定当前背景", value=st.session_state.lock_background)
     
     uploaded_bg = None
-    bg_source = "纯白背景"
-    bg_type = "干净明亮"
-    solid_style = "干净明亮"
+    bg_source = "纯色背景"
+    bg_type = "同色清爽渐变"
+    solid_style = "纯白"
 
     fixed_bg_templates = []
     if any("模板2" in t for t in selected_templates):
@@ -1801,10 +1800,10 @@ with col_left:
         fixed_bg_templates.append("模板5：双层图标背景")
     if fixed_bg_templates:
         st.info("；".join(fixed_bg_templates))
-    bg_source = st.radio("模板1/3/7/8背景来源：", ["纯白背景", "纯黑背景", "纯色背景", "AI智能渐变生成", "上传背景图"])
+    bg_source = st.radio("模板1/3/7/8背景来源：", ["纯色背景", "AI智能渐变生成", "上传背景图"])
 
     if bg_source == "纯色背景":
-        solid_style = st.selectbox("纯色美学风格：", ["干净明亮", "马卡龙"])
+        solid_style = st.selectbox("纯色美学风格：", ["纯白", "纯黑", "明亮彩色", "马卡龙"])
     elif bg_source == "AI智能渐变生成":
         bg_type = st.selectbox("选择渐变美学风格：", ["同色清爽渐变", "多色梦幻渐变"])
     elif bg_source == "上传背景图":  # 🛠️ 修复：与单选框定义的字符串保持完全一致
