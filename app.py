@@ -115,8 +115,11 @@ st.markdown("""
         [data-testid="stVerticalBlockBorderWrapper"] > div > div { justify-content: flex-start !important; }
         [data-testid="stVerticalBlock"] { gap: 0.55rem !important; }
         div[data-testid="stFormElement"] { margin-bottom: 0px !important; }
+        .uploadedFile,
         .stFileUploaderFile,
-        [data-testid="stFileUploaderDropzone"] + div,
+        [data-testid="stFileUploaderFile"],
+        [data-testid="stFileUploaderFileName"],
+        [data-testid="stFileUploaderDeleteBtn"],
         [data-testid="stFileUploaderPagination"] {
             display: none !important;
         }
@@ -427,14 +430,14 @@ def build_sortable_custom_style(uploaded_files, prefix):
             padding-top: 4px;
         }
         .sortable-item {
-            width: 98px;
-            min-height: 104px;
+            width: 96px;
+            min-height: 102px;
             border-radius: 8px;
             border: 1px solid #d1d5db;
             background-color: #ffffff;
             background-repeat: no-repeat;
-            background-position: center 9px;
-            background-size: 36px 36px;
+            background-position: center 8px;
+            background-size: 34px 34px;
             box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
             padding: 48px 6px 8px 6px;
             font-size: 10px;
@@ -1443,7 +1446,19 @@ with col_left:
         if uploaded_icons:
             st.success(f"已载入 {len(uploaded_icons)} 张 Icon")
 
-    if uploaded_icons:
+    if uploaded_icons and sort_items is not None:
+        general_names = [file.name for file in uploaded_icons]
+        general_cards_style = build_sortable_custom_style(uploaded_icons, "general")
+        sorted_general_names = sort_items(
+            general_names,
+            direction="horizontal",
+            custom_style=general_cards_style,
+            key=f"general_icon_sorter_{repr(st.session_state.general_uploaded_source_signature)}"
+        )
+        if sorted_general_names and sorted_general_names != general_names:
+            st.session_state.general_uploaded_icons = reorder_uploads_by_names(uploaded_icons, sorted_general_names)
+            uploaded_icons = list(st.session_state.general_uploaded_icons)
+    elif uploaded_icons:
         render_icon_preview_grid(uploaded_icons, columns=4)
 
     uploaded_icons_template6 = list(st.session_state.template6_uploaded_icons)
@@ -1471,7 +1486,20 @@ with col_left:
                     trigger_rerun()
             with count_col:
                 st.success(f"模板6专属素材已载入 {len(uploaded_icons_template6)} 张 Icon，将按 4 张自动分组。")
-            render_icon_preview_grid(uploaded_icons_template6, columns=4)
+            if sort_items is not None:
+                template6_names = [file.name for file in uploaded_icons_template6]
+                template6_cards_style = build_sortable_custom_style(uploaded_icons_template6, "template6")
+                sorted_template6_names = sort_items(
+                    template6_names,
+                    direction="horizontal",
+                    custom_style=template6_cards_style,
+                    key=f"template6_icon_sorter_{repr(st.session_state.template6_uploaded_source_signature)}"
+                )
+                if sorted_template6_names and sorted_template6_names != template6_names:
+                    st.session_state.template6_uploaded_icons = reorder_uploads_by_names(uploaded_icons_template6, sorted_template6_names)
+                    uploaded_icons_template6 = list(st.session_state.template6_uploaded_icons)
+            else:
+                render_icon_preview_grid(uploaded_icons_template6, columns=4)
 
     st.session_state.fast_preview_mode = st.toggle(
         "快速预览模式",
