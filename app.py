@@ -496,7 +496,6 @@ def render_sortable_upload_cards(uploaded_files, state_key):
 
     item_labels = [str(i + 1) for i in range(len(files))]
     custom_style = build_sortable_custom_style(files, state_key)
-    st.markdown(custom_style, unsafe_allow_html=True)
     sorted_labels = sort_items(
         item_labels,
         custom_style=custom_style,
@@ -1464,51 +1463,53 @@ with col_left:
             horizontal=True,
             key="template6_icon_mode"
         )
-    uploaded_icons_raw = st.file_uploader(
-        "选择 Icon 图像",
-        type=["png", "jpg", "jpeg"],
-        accept_multiple_files=True,
-        key=f"icon_uploader_{st.session_state.icon_uploader_nonce}"
-    )
-    
-    if uploaded_icons_raw is not None:
-        general_signature = uploads_signature(uploaded_icons_raw)
-        if general_signature != st.session_state.general_uploaded_source_signature:
+    uploaded_icons = list(st.session_state.general_uploaded_icons)
+    if not uploaded_icons:
+        uploaded_icons_raw = st.file_uploader(
+            "选择 Icon 图像",
+            type=["png", "jpg", "jpeg"],
+            accept_multiple_files=True,
+            key=f"icon_uploader_{st.session_state.icon_uploader_nonce}"
+        )
+        if uploaded_icons_raw:
+            general_signature = uploads_signature(uploaded_icons_raw)
             st.session_state.general_uploaded_source_signature = general_signature
             st.session_state.general_uploaded_icons = make_stored_uploads(uploaded_icons_raw)
-
-    uploaded_icons = list(st.session_state.general_uploaded_icons)
+            trigger_rerun()
 
     if uploaded_icons and len(uploaded_icons) > 9:
         st.error("最多支持处理 9 张 Icon，超出部分将被自动截断。")
+        st.session_state.general_uploaded_icons = uploaded_icons[:9]
+        st.session_state.general_uploaded_source_signature = uploads_signature(st.session_state.general_uploaded_icons)
+        trigger_rerun()
     
     uploaded_icons = uploaded_icons[:9]
-    render_sortable_upload_cards(uploaded_icons, "general")
-    clear_general_icon_col, general_icon_status_col = st.columns([1, 4])
-    with clear_general_icon_col:
-        if uploaded_icons and st.button("清空通用 Icon", use_container_width=True):
-            st.session_state.general_uploaded_icons = []
-            st.session_state.general_uploaded_source_signature = None
-            st.session_state.icon_uploader_nonce += 1
-            trigger_rerun()
-    with general_icon_status_col:
-        if uploaded_icons:
+    if uploaded_icons:
+        clear_general_icon_col, general_icon_status_col = st.columns([1, 4])
+        with clear_general_icon_col:
+            if st.button("清空通用 Icon", use_container_width=True):
+                st.session_state.general_uploaded_icons = []
+                st.session_state.general_uploaded_source_signature = None
+                st.session_state.icon_uploader_nonce += 1
+                trigger_rerun()
+        with general_icon_status_col:
             st.success(f"已载入 {len(uploaded_icons)} 张 Icon")
+        render_sortable_upload_cards(uploaded_icons, "general")
 
     uploaded_icons_template6 = list(st.session_state.template6_uploaded_icons)
     if any("模板6" in t for t in selected_templates) and template6_icon_mode == "模板6专属":
-        template6_uploaded_raw = st.file_uploader(
-            "选择模板6专属 Icon 图像",
-            type=["png", "jpg", "jpeg"],
-            accept_multiple_files=True,
-            key=f"icon_uploader_template6_{st.session_state.template6_icon_uploader_nonce}"
-        )
-        if template6_uploaded_raw is not None:
-            raw_signature = uploads_signature(template6_uploaded_raw)
-            if raw_signature != st.session_state.template6_uploaded_source_signature:
+        if not uploaded_icons_template6:
+            template6_uploaded_raw = st.file_uploader(
+                "选择模板6专属 Icon 图像",
+                type=["png", "jpg", "jpeg"],
+                accept_multiple_files=True,
+                key=f"icon_uploader_template6_{st.session_state.template6_icon_uploader_nonce}"
+            )
+            if template6_uploaded_raw:
+                raw_signature = uploads_signature(template6_uploaded_raw)
                 st.session_state.template6_uploaded_source_signature = raw_signature
                 st.session_state.template6_uploaded_icons = make_stored_uploads(template6_uploaded_raw)
-                uploaded_icons_template6 = list(st.session_state.template6_uploaded_icons)
+                trigger_rerun()
 
         if uploaded_icons_template6:
             clear_col, count_col = st.columns([1, 4])
