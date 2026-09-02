@@ -11,15 +11,9 @@ import os
 import colorsys
 import io
 import base64
-import hashlib
-from collections import deque
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageChops, ImageEnhance, ImageOps
 from colorthief import ColorThief
-try:
-    from streamlit_sortables import sort_items
-except ImportError:
-    sort_items = None
 
 # ====================================================================
 # 🔴 【核心设置】Streamlit 配置与 2K 极简皮肤注入
@@ -120,6 +114,9 @@ st.markdown("""
         [data-testid="stFileUploaderFile"],
         [data-testid="stFileUploaderFileName"],
         [data-testid="stFileUploaderDeleteBtn"],
+        [data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] [data-testid="stFileUploaderFile"],
+        [data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] ~ div,
+        [data-testid="stFileUploader"] ul,
         [data-testid="stFileUploaderPagination"] {
             display: none !important;
         }
@@ -400,6 +397,36 @@ def render_icon_preview_grid(uploaded_files, columns=4, key_prefix="icon_preview
             except:
                 st.write("预览失败")
             st.caption(file.name)
+
+
+def render_upload_card_grid(uploaded_files, state_key, columns=4):
+    files = list(uploaded_files or [])
+    if not files:
+        return
+    for start in range(0, len(files), columns):
+        row_files = files[start:start + columns]
+        row_cols = st.columns(len(row_files))
+        for offset, file in enumerate(row_files):
+            card_col = row_cols[offset]
+            with card_col:
+                del_col, _ = st.columns([1, 7])
+                with del_col:
+                    if st.button("×", key=f"{state_key}_delete_{start + offset}_{file.name}", help="删除这张图"):
+                        remaining = [one for one in files if one is not file]
+                        if state_key == "general":
+                            st.session_state.general_uploaded_icons = remaining
+                            st.session_state.general_uploaded_source_signature = uploads_signature(remaining)
+                        else:
+                            st.session_state.template6_uploaded_icons = remaining
+                            st.session_state.template6_uploaded_source_signature = uploads_signature(remaining)
+                        trigger_rerun()
+                try:
+                    thumb = Image.open(io.BytesIO(file.getvalue())).convert("RGBA")
+                    thumb.thumbnail((40, 40), Image.Resampling.LANCZOS)
+                    st.image(thumb, width=40)
+                except:
+                    st.write("预览失败")
+                st.caption(file.name)
 
 
 def build_sortable_custom_style(uploaded_files, prefix):
@@ -1445,21 +1472,8 @@ with col_left:
     with general_icon_status_col:
         if uploaded_icons:
             st.success(f"已载入 {len(uploaded_icons)} 张 Icon")
-
-    if uploaded_icons and sort_items is not None:
-        general_names = [file.name for file in uploaded_icons]
-        general_cards_style = build_sortable_custom_style(uploaded_icons, "general")
-        sorted_general_names = sort_items(
-            general_names,
-            direction="horizontal",
-            custom_style=general_cards_style,
-            key=f"general_icon_sorter_{repr(st.session_state.general_uploaded_source_signature)}"
-        )
-        if sorted_general_names and sorted_general_names != general_names:
-            st.session_state.general_uploaded_icons = reorder_uploads_by_names(uploaded_icons, sorted_general_names)
-            uploaded_icons = list(st.session_state.general_uploaded_icons)
-    elif uploaded_icons:
-        render_icon_preview_grid(uploaded_icons, columns=4)
+    if uploaded_icons:
+        render_upload_card_grid(uploaded_icons, "general", columns=4)
 
     uploaded_icons_template6 = list(st.session_state.template6_uploaded_icons)
     if any("模板6" in t for t in selected_templates) and template6_icon_mode == "模板6专属":
@@ -1486,20 +1500,8 @@ with col_left:
                     trigger_rerun()
             with count_col:
                 st.success(f"模板6专属素材已载入 {len(uploaded_icons_template6)} 张 Icon，将按 4 张自动分组。")
-            if sort_items is not None:
-                template6_names = [file.name for file in uploaded_icons_template6]
-                template6_cards_style = build_sortable_custom_style(uploaded_icons_template6, "template6")
-                sorted_template6_names = sort_items(
-                    template6_names,
-                    direction="horizontal",
-                    custom_style=template6_cards_style,
-                    key=f"template6_icon_sorter_{repr(st.session_state.template6_uploaded_source_signature)}"
-                )
-                if sorted_template6_names and sorted_template6_names != template6_names:
-                    st.session_state.template6_uploaded_icons = reorder_uploads_by_names(uploaded_icons_template6, sorted_template6_names)
-                    uploaded_icons_template6 = list(st.session_state.template6_uploaded_icons)
-            else:
-                render_icon_preview_grid(uploaded_icons_template6, columns=4)
+            if uploaded_icons_template6:
+                render_upload_card_grid(uploaded_icons_template6, "template6", columns=4)
 
     st.session_state.fast_preview_mode = st.toggle(
         "快速预览模式",
