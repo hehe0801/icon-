@@ -1606,6 +1606,7 @@ def render_card_png_bytes(
     bg_source,
     bg_type,
     bg_image_bytes,
+    solid_style,
     bg_seed
 ):
     random.seed(card_seed)
@@ -1637,6 +1638,7 @@ def render_card_png_bytes(
         "bg_source": bg_source,
         "bg_type": bg_type,
         "bg_image_bytes": bg_image_bytes,
+        "solid_style": solid_style,
         "bg_seed": bg_seed
     }
     if "模板5" in template_choice:
@@ -2038,9 +2040,10 @@ if has_any_icons:
                     cfg["tag_text"],
                     tuple(sorted(cfg["colors"].items())),
                     cfg.get("auto_color", False),
-                    bg_cfg.get("bg_source", "纯白背景"),
+                    bg_cfg.get("bg_source", "纯色背景"),
                     bg_cfg.get("bg_type", "同色清爽渐变"),
                     bg_cfg.get("bg_image_bytes"),
+                    bg_cfg.get("solid_style", "纯白"),
                     card_seed
                 )
                 preview_width = 520 if st.session_state.fast_preview_mode else 1280
@@ -2057,9 +2060,10 @@ if has_any_icons:
                     cfg["tag_text"],
                     tuple(sorted(cfg["colors"].items())),
                     cfg.get("auto_color", False),
-                    bg_cfg.get("bg_source", "纯白背景"),
+                    bg_cfg.get("bg_source", "纯色背景"),
                     bg_cfg.get("bg_type", "同色清爽渐变"),
                     bg_cfg.get("bg_image_bytes"),
+                    bg_cfg.get("solid_style", "纯白"),
                     card_seed
                 )
                 canvas = Image.open(io.BytesIO(rendered_png)).convert("RGB").copy()
@@ -2140,9 +2144,10 @@ if has_any_icons:
                     cfg["tag_text"],
                     tuple(sorted(cfg["colors"].items())),
                     cfg.get("auto_color", False),
-                    bg_cfg.get("bg_source", "纯白背景"),
+                    bg_cfg.get("bg_source", "纯色背景"),
                     bg_cfg.get("bg_type", "同色清爽渐变"),
                     bg_cfg.get("bg_image_bytes"),
+                    bg_cfg.get("solid_style", "纯白"),
                     card_seed
                 )
                 preview_width = 520 if st.session_state.fast_preview_mode else 1280
@@ -2159,9 +2164,10 @@ if has_any_icons:
                     cfg["tag_text"],
                     tuple(sorted(cfg["colors"].items())),
                     cfg.get("auto_color", False),
-                    bg_cfg.get("bg_source", "纯白背景"),
+                    bg_cfg.get("bg_source", "纯色背景"),
                     bg_cfg.get("bg_type", "同色清爽渐变"),
                     bg_cfg.get("bg_image_bytes"),
+                    bg_cfg.get("solid_style", "纯白"),
                     card_seed
                 )
                 canvas = Image.open(io.BytesIO(rendered_png)).convert("RGB").copy()
