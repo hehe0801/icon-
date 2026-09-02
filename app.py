@@ -448,6 +448,7 @@ def build_sortable_custom_style(uploaded_files, prefix):
             gap: 8px;
             align-items: flex-start;
             padding-top: 2px;
+            counter-reset: upload-card;
         }
         .sortable-item {
             width: 82px;
@@ -460,12 +461,20 @@ def build_sortable_custom_style(uploaded_files, prefix):
             background-size: 30px 30px;
             box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
             padding: 46px 6px 8px 6px;
-            font-size: 10px;
+            font-size: 0;
             line-height: 1.1;
             text-align: center;
-            color: #111827;
+            color: transparent;
             word-break: break-all;
             cursor: grab;
+        }
+        .sortable-item::after {
+            counter-increment: upload-card;
+            content: counter(upload-card);
+            display: block;
+            font-size: 10px;
+            line-height: 1;
+            color: #111827;
         }
         .sortable-item:hover {
             border-color: #9ca3af;
@@ -494,16 +503,19 @@ def render_sortable_upload_cards(uploaded_files, state_key):
     if not files:
         return files
 
-    item_labels = [str(i + 1) for i in range(len(files))]
+    item_labels = [getattr(file, "uid", str(index)) for index, file in enumerate(files, start=1)]
     custom_style = build_sortable_custom_style(files, state_key)
     sorted_labels = sort_items(
         item_labels,
+        header=None,
+        direction="horizontal",
         custom_style=custom_style,
         key=f"{state_key}_sortable"
     )
     if sorted_labels != item_labels:
         try:
-            reordered = [files[int(label) - 1] for label in sorted_labels]
+            file_by_uid = {getattr(file, "uid", None): file for file in files}
+            reordered = [file_by_uid[label] for label in sorted_labels if label in file_by_uid]
         except Exception:
             reordered = files
         if state_key == "general":
