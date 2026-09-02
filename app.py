@@ -860,11 +860,55 @@ def get_template2_auto_colors(raw_rgb):
         "tag": to_hex(tag_rgb)
     }
 
-def make_background_config(source, gradient_type="同色清爽渐变", uploaded_file=None):
+
+def pick_weighted_choice(weighted_items, rng):
+    total = sum(weight for _, weight in weighted_items)
+    roll = rng.random() * total
+    cursor = 0.0
+    for item, weight in weighted_items:
+        cursor += weight
+        if roll <= cursor:
+            return item
+    return weighted_items[-1][0]
+
+
+def make_solid_background_color(icon_hue, style_name="干净明亮", bg_seed=None, idx=0):
+    rng = random.Random((bg_seed or 0) + idx * 10007)
+
+    if style_name == "马卡龙":
+        relation = pick_weighted_choice(
+            [("同类色", 52), ("邻近色", 38), ("对比色", 10)],
+            rng
+        )
+        sat_range = (0.20, 0.42)
+        light_range = (0.86, 0.96)
+    else:
+        relation = pick_weighted_choice(
+            [("同类色", 46), ("邻近色", 40), ("对比色", 14)],
+            rng
+        )
+        sat_range = (0.38, 0.72)
+        light_range = (0.74, 0.90)
+
+    if relation == "同类色":
+        hue = (icon_hue + rng.uniform(-0.02, 0.02)) % 1.0
+    elif relation == "邻近色":
+        hue_shift = rng.choice([-1, 1]) * rng.uniform(0.04, 0.12)
+        hue = (icon_hue + hue_shift) % 1.0
+    else:
+        hue = (icon_hue + 0.5 + rng.uniform(-0.08, 0.08)) % 1.0
+
+    saturation = rng.uniform(*sat_range)
+    lightness = rng.uniform(*light_range)
+    rgb = colorsys.hls_to_rgb(hue, lightness, saturation)
+    return tuple(max(0, min(255, int(v * 255))) for v in rgb), relation
+
+def make_background_config(source, gradient_type="同色清爽渐变", uploaded_file=None, solid_style="干净明亮"):
     return {
         "bg_source": source,
         "bg_type": gradient_type,
-        "bg_image_bytes": uploaded_file.getvalue() if uploaded_file is not None else None
+        "bg_image_bytes": uploaded_file.getvalue() if uploaded_file is not None else None,
+        "solid_style": solid_style
     }
 
 def create_background_canvas(bg_config, idx, icon_hue):
@@ -892,6 +936,18 @@ def create_background_canvas(bg_config, idx, icon_hue):
             bg_bytes = load_background_png_bytes(bg_path, os.path.getmtime(bg_path))
             canvas = Image.open(io.BytesIO(bg_bytes)).convert("RGB").copy()
             return canvas, canvas.size[0], canvas.size[1]
+        return Image.new("RGB", (img_width, img_height), color=(255, 255, 255)), img_width, img_height
+
+    if source == "纯白背景":
+        return Image.new("RGB", (img_width, img_height), color=(255, 255, 255)), img_width, img_height
+
+    if source == "纯黑背景":
+        return Image.new("RGB", (img_width, img_height), color=(0, 0, 0)), img_width, img_height
+
+    if source == "纯色背景":
+        color_style = bg_config.get("solid_style", "干净明亮")
+        rgb, _ = make_solid_background_color(icon_hue, color_style, bg_seed=bg_seed, idx=idx)
+        return Image.new("RGB", (img_width, img_height), color=rgb), img_width, img_height
         return Image.new("RGB", (img_width, img_height), color=(255, 255, 255)), img_width, img_height
 
     if source == "上传背景图" and bg_config.get("bg_image_bytes"):
@@ -1733,7 +1789,8 @@ with col_left:
     
     uploaded_bg = None
     bg_source = "纯白背景"
-    bg_type = "同色清爽渐变"
+    bg_type = "干净明亮"
+    solid_style = "干净明亮"
 
     fixed_bg_templates = []
     if any("模板2" in t for t in selected_templates):
@@ -1744,14 +1801,16 @@ with col_left:
         fixed_bg_templates.append("模板5：双层图标背景")
     if fixed_bg_templates:
         st.info("；".join(fixed_bg_templates))
-    bg_source = st.radio("模板1/3/7/8背景来源：", ["纯白背景", "AI智能渐变生成", "上传背景图"])
+    bg_source = st.radio("模板1/3/7/8背景来源：", ["纯白背景", "纯黑背景", "纯色背景", "AI智能渐变生成", "上传背景图"])
 
-    if bg_source == "AI智能渐变生成":
+    if bg_source == "纯色背景":
+        solid_style = st.selectbox("纯色美学风格：", ["干净明亮", "马卡龙"])
+    elif bg_source == "AI智能渐变生成":
         bg_type = st.selectbox("选择渐变美学风格：", ["同色清爽渐变", "多色梦幻渐变"])
     elif bg_source == "上传背景图":  # 🛠️ 修复：与单选框定义的字符串保持完全一致
         uploaded_bg = st.file_uploader("上传自定义背景大图：", type=["png", "jpg", "jpeg"], key="bg_uploader")
 
-    global_background_config = make_background_config(bg_source, bg_type, uploaded_bg)
+    global_background_config = make_background_config(bg_source, bg_type, uploaded_bg, solid_style)
 
     template5_uploaded_bg = None
     template5_background_config = make_background_config("template5_icon_blur")
@@ -1880,7 +1939,9 @@ current_render_signature = (
     get_template_render_cache_key(template_choice),
     tuple((file.name, getattr(file, "size", 0)) for file in uploaded_icons),
     st.session_state.template6_icon_mode if any("模板6" in t for t in selected_templates) else None,
-    tuple((file.name, getattr(file, "size", 0)) for file in (uploaded_icons_template6 or []))
+    tuple((file.name, getattr(file, "size", 0)) for file in (uploaded_icons_template6 or [])),
+    global_background_config.get("solid_style"),
+    global_background_config.get("bg_source")
 )
 if st.session_state.last_render_signature is not None and current_render_signature != st.session_state.last_render_signature:
     st.session_state.prepare_hd_downloads = False
