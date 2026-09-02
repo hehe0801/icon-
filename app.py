@@ -1,5 +1,6 @@
 import os
 import zipfile
+from collections import deque
 
 # 检查如果只有压缩包，没有解压后的字体，就自动在云端解压它
 if os.path.exists("fonts/general_bold.zip") and not os.path.exists("fonts/general_bold.ttf"):
@@ -337,6 +338,93 @@ def paste_shadowed_stroke_text(canvas, center_xy, text, font, fill, stroke_fill,
     canvas.paste(shadow, (shadow_x, shadow_y), shadow)
     canvas.paste(layer, (layer_x, layer_y), layer)
     return (layer_x, layer_y, layer_x + layer.size[0], layer_y + layer.size[1])
+
+
+def transform_italic_layer(layer, shear_x=-0.18):
+    if layer.size[0] <= 1 or layer.size[1] <= 1:
+        return layer
+    shear_pad = int(abs(shear_x) * layer.size[1]) + 8
+    new_width = layer.size[0] + shear_pad
+    if shear_x < 0:
+        matrix = (1, shear_x, shear_pad, 0, 1, 0)
+    else:
+        matrix = (1, shear_x, 0, 0, 1, 0)
+    return layer.transform(
+        (new_width, layer.size[1]),
+        Image.AFFINE,
+        matrix,
+        resample=Image.Resampling.BICUBIC
+    )
+
+
+def paste_text_layer(canvas, center_xy, text, font, fill, stroke_fill=(0, 0, 0, 0), stroke_width=0, opacity=255, italic=False):
+    layer = make_stroke_text_layer(text, font, fill, stroke_fill, stroke_width)
+    if italic:
+        layer = transform_italic_layer(layer)
+    if opacity < 255:
+        alpha = layer.getchannel("A").point(lambda a: int(a * opacity / 255))
+        layer.putalpha(alpha)
+    center_x, center_y = center_xy
+    x = int(round(center_x - layer.size[0] / 2))
+    y = int(round(center_y - layer.size[1] / 2))
+    canvas.paste(layer, (x, y), layer)
+    return (x, y, x + layer.size[0], y + layer.size[1])
+
+
+def make_outlined_icon_card(icon_src, icon_size, border_px, radius_ratio=0.18, shadow_alpha=0, shadow_blur=0, shadow_offset=(0, 0), inner_shadow_alpha=0):
+    card_size = icon_size + border_px * 2
+    layer = Image.new("RGBA", (card_size, card_size), (0, 0, 0, 0))
+    outline_mask = Image.new("L", (card_size, card_size), 0)
+    outline_draw = ImageDraw.Draw(outline_mask)
+    outline_draw.rounded_rectangle(
+        (0, 0, card_size - 1, card_size - 1),
+        radius=int(card_size * radius_ratio),
+        fill=255
+    )
+
+    if shadow_alpha > 0:
+        shadow_layer = Image.new("RGBA", (card_size, card_size), (0, 0, 0, 0))
+        shadow_draw = ImageDraw.Draw(shadow_layer)
+        shadow_draw.rounded_rectangle(
+            (border_px + shadow_offset[0], border_px + shadow_offset[1], card_size - border_px + shadow_offset[0], card_size - border_px + shadow_offset[1]),
+            radius=int(icon_size * radius_ratio),
+            fill=(0, 0, 0, shadow_alpha)
+        )
+        shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(shadow_blur))
+        layer = Image.alpha_composite(layer, shadow_layer)
+
+    frame = Image.new("RGBA", (card_size, card_size), (0, 0, 0, 0))
+    frame_draw = ImageDraw.Draw(frame)
+    frame_draw.rounded_rectangle(
+        (0, 0, card_size - 1, card_size - 1),
+        radius=int(card_size * radius_ratio),
+        fill=(255, 255, 255, 255)
+    )
+
+    if inner_shadow_alpha > 0:
+        inner = Image.new("RGBA", (card_size, card_size), (0, 0, 0, 0))
+        inner_draw = ImageDraw.Draw(inner)
+        inner_draw.rounded_rectangle(
+            (border_px // 2, border_px // 2, card_size - border_px // 2 - 1, card_size - border_px // 2 - 1),
+            radius=max(1, int(card_size * radius_ratio) - border_px // 2),
+            fill=(0, 0, 0, inner_shadow_alpha)
+        )
+        inner = inner.filter(ImageFilter.GaussianBlur(max(2, border_px // 2)))
+        frame = Image.alpha_composite(frame, inner)
+
+    icon_layer = fit_cover(icon_src, (icon_size, icon_size)).convert("RGBA")
+    icon_mask = Image.new("L", (icon_size, icon_size), 0)
+    icon_mask_draw = ImageDraw.Draw(icon_mask)
+    icon_mask_draw.rounded_rectangle(
+        (0, 0, icon_size - 1, icon_size - 1),
+        radius=int(icon_size * radius_ratio),
+        fill=255
+    )
+    icon_rounded = Image.new("RGBA", (icon_size, icon_size), (0, 0, 0, 0))
+    icon_rounded.paste(icon_layer, (0, 0), icon_mask)
+    frame.paste(icon_rounded, (border_px, border_px), icon_rounded)
+    layer = Image.alpha_composite(layer, frame)
+    return layer
 
 
 def group_icons_with_fill(uploaded_files, group_size=4):
@@ -719,6 +807,22 @@ TEMPLATE_DEFAULTS = {
         "sub_title": "",
         "promo_text": "IOS游戏推荐",
         "colors": {"tag": "#000000", "main": "#000000", "sub": "#000000"},
+        "auto_color": False
+    },
+    "模板7：上头解压风": {
+        "mode": "智能批量宣传语",
+        "main_title": "超上头的解压小游戏",
+        "sub_title": "解压休闲/打发时间/免费畅玩。",
+        "promo_text": "超上头的解压小游戏\n解压休闲/打发时间/免费畅玩。",
+        "colors": {"tag": "#FFFFFF", "main": "#2F1812", "sub": "#2F1812"},
+        "auto_color": False
+    },
+    "模板8：方形强视觉": {
+        "mode": "智能批量宣传语",
+        "main_title": "不用下载不占内存",
+        "sub_title": "好玩上头小游戏",
+        "promo_text": "不用下载不占内存\n好玩上头小游戏",
+        "colors": {"tag": "#FFFFFF", "main": "#1F1F1F", "sub": "#1F1F1F"},
         "auto_color": False
     }
 }
@@ -1346,7 +1450,90 @@ def render_template_6(canvas, icon_src_group, main_title, font_main, colors):
     return canvas
 
 
+def render_template_7(canvas, icon_src, main_title, sub_title, font_main, sub_font, raw_rgb, colors):
+    img_width, img_height = canvas.size
+    draw = ImageDraw.Draw(canvas)
+
+    icon_size = int(img_width * 0.56)
+    icon_border = int(icon_size * 0.028)
+    icon_x = (img_width - (icon_size + icon_border * 2)) // 2
+    icon_y = int(img_height * 0.14)
+
+    icon_card = make_outlined_icon_card(
+        icon_src,
+        icon_size=icon_size,
+        border_px=icon_border,
+        radius_ratio=0.19,
+        shadow_alpha=0,
+        shadow_blur=0,
+        inner_shadow_alpha=72
+    )
+    canvas.paste(icon_card, (icon_x, icon_y), icon_card)
+
+    main_font = fit_font_to_width(font_main, main_title, int(img_width * 0.106), int(img_width * 0.88), min_size=90)
+    sub_font_main = fit_font_to_width(sub_font, sub_title, int(img_width * 0.065), int(img_width * 0.84), min_size=58, stroke_width=4)
+
+    main_y = int(img_height * 0.71)
+    sub_y = int(img_height * 0.842)
+
+    draw.text((img_width // 2, main_y), main_title, fill=colors["main"], font=main_font, anchor="mm")
+
+    sub_shadow_font = sub_font_main
+    shadow_layer = make_stroke_text_layer(sub_title, sub_shadow_font, (255, 255, 255, 255), (255, 255, 255, 255), 2)
+    shadow_layer = transform_italic_layer(shadow_layer, shear_x=-0.16)
+    shadow_alpha = shadow_layer.getchannel("A").point(lambda a: int(a * 120 / 255))
+    shadow_layer.putalpha(shadow_alpha)
+    shadow_x = int(round(img_width / 2 - shadow_layer.size[0] / 2 + 5))
+    shadow_y = int(round(sub_y - shadow_layer.size[1] / 2 + 5))
+    canvas.paste(shadow_layer, (shadow_x, shadow_y), shadow_layer)
+
+    paste_text_layer(
+        canvas,
+        (img_width // 2, sub_y),
+        sub_title,
+        sub_font_main,
+        colors["sub"],
+        stroke_fill=colors["sub"],
+        stroke_width=2,
+        italic=True
+    )
+    return canvas
+
+
+def render_template_8(canvas, icon_src, main_title, sub_title, font_main, sub_font, raw_rgb, colors):
+    img_width, img_height = canvas.size
+    draw = ImageDraw.Draw(canvas)
+
+    icon_size = int(img_width * 0.50)
+    icon_border = int(icon_size * 0.030)
+    icon_x = (img_width - (icon_size + icon_border * 2)) // 2
+    icon_y = int(img_height * 0.17)
+
+    icon_card = make_outlined_icon_card(
+        icon_src,
+        icon_size=icon_size,
+        border_px=icon_border,
+        radius_ratio=0.18,
+        shadow_alpha=0,
+        shadow_blur=0,
+        inner_shadow_alpha=0
+    )
+    canvas.paste(icon_card, (icon_x, icon_y), icon_card)
+
+    main_font = fit_font_to_width(font_main, main_title, int(img_width * 0.102), int(img_width * 0.88), min_size=86)
+    sub_font_main = fit_font_to_width(font_main, sub_title, int(img_width * 0.102), int(img_width * 0.88), min_size=86)
+
+    main_y = int(img_height * 0.75)
+    sub_y = int(img_height * 0.875)
+
+    draw.text((img_width // 2, main_y), main_title, fill=colors["main"], font=main_font, anchor="mm")
+    draw.text((img_width // 2, sub_y), sub_title, fill=colors["sub"], font=sub_font_main, anchor="mm")
+    return canvas
+
+
 TEMPLATE_REGISTRY["模板6：四宫格图标风"] = render_template_6
+TEMPLATE_REGISTRY["模板7：上头解压风"] = render_template_7
+TEMPLATE_REGISTRY["模板8：方形强视觉"] = render_template_8
 
 
 @st.cache_data(show_spinner=False, max_entries=128)
@@ -1543,7 +1730,7 @@ with col_left:
 
     # 📍 [UI名称修改点] 步骤三：背景画布设置
     st.header("3. 背景画布设置")
-    st.markdown('<div class="step-hint">模板2使用背景图库随机匹配，模板4使用智能图库背景，模板1/3使用下面的批量背景设置。</div>', unsafe_allow_html=True)
+    st.markdown('<div class="step-hint">模板2使用背景图库随机匹配，模板4使用智能图库背景，模板1/3/7/8使用下面的批量背景设置。</div>', unsafe_allow_html=True)
     st.session_state.lock_background = st.toggle("锁定当前背景", value=st.session_state.lock_background)
     
     uploaded_bg = None
@@ -1559,7 +1746,7 @@ with col_left:
         fixed_bg_templates.append("模板5：双层图标背景")
     if fixed_bg_templates:
         st.info("；".join(fixed_bg_templates))
-    bg_source = st.radio("模板1/3背景来源：", ["纯白背景", "AI智能渐变生成", "上传背景图"])
+    bg_source = st.radio("模板1/3/7/8背景来源：", ["纯白背景", "AI智能渐变生成", "上传背景图"])
 
     if bg_source == "AI智能渐变生成":
         bg_type = st.selectbox("选择渐变美学风格：", ["同色清爽渐变", "多色梦幻渐变"])
