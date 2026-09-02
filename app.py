@@ -1454,10 +1454,10 @@ def render_template_7(canvas, icon_src, main_title, sub_title, font_main, sub_fo
     img_width, img_height = canvas.size
     draw = ImageDraw.Draw(canvas)
 
-    icon_size = int(img_width * 0.56)
-    icon_border = int(icon_size * 0.028)
+    icon_size = int(img_width * 0.66)
+    icon_border = int(icon_size * 0.024)
     icon_x = (img_width - (icon_size + icon_border * 2)) // 2
-    icon_y = int(img_height * 0.14)
+    icon_y = int(img_height * 0.12)
 
     icon_card = make_outlined_icon_card(
         icon_src,
@@ -1466,25 +1466,24 @@ def render_template_7(canvas, icon_src, main_title, sub_title, font_main, sub_fo
         radius_ratio=0.19,
         shadow_alpha=0,
         shadow_blur=0,
-        inner_shadow_alpha=72
+        inner_shadow_alpha=52
     )
     canvas.paste(icon_card, (icon_x, icon_y), icon_card)
 
     main_font = fit_font_to_width(font_main, main_title, int(img_width * 0.106), int(img_width * 0.88), min_size=90)
-    sub_font_main = fit_font_to_width(sub_font, sub_title, int(img_width * 0.065), int(img_width * 0.84), min_size=58, stroke_width=4)
+    sub_font_main = fit_font_to_width(sub_font, sub_title, int(img_width * 0.054), int(img_width * 0.82), min_size=52)
 
-    main_y = int(img_height * 0.71)
+    main_y = int(img_height * 0.72)
     sub_y = int(img_height * 0.842)
 
     draw.text((img_width // 2, main_y), main_title, fill=colors["main"], font=main_font, anchor="mm")
 
-    sub_shadow_font = sub_font_main
-    shadow_layer = make_stroke_text_layer(sub_title, sub_shadow_font, (255, 255, 255, 255), (255, 255, 255, 255), 2)
-    shadow_layer = transform_italic_layer(shadow_layer, shear_x=-0.16)
-    shadow_alpha = shadow_layer.getchannel("A").point(lambda a: int(a * 120 / 255))
+    shadow_layer = make_stroke_text_layer(sub_title, sub_font_main, (255, 255, 255, 255), (255, 255, 255, 255), 1)
+    shadow_layer = transform_italic_layer(shadow_layer, shear_x=0.16)
+    shadow_alpha = shadow_layer.getchannel("A").point(lambda a: int(a * 110 / 255))
     shadow_layer.putalpha(shadow_alpha)
-    shadow_x = int(round(img_width / 2 - shadow_layer.size[0] / 2 + 5))
-    shadow_y = int(round(sub_y - shadow_layer.size[1] / 2 + 5))
+    shadow_x = int(round(img_width / 2 - shadow_layer.size[0] / 2 + 4))
+    shadow_y = int(round(sub_y - shadow_layer.size[1] / 2 + 4))
     canvas.paste(shadow_layer, (shadow_x, shadow_y), shadow_layer)
 
     paste_text_layer(
@@ -1494,8 +1493,8 @@ def render_template_7(canvas, icon_src, main_title, sub_title, font_main, sub_fo
         sub_font_main,
         colors["sub"],
         stroke_fill=colors["sub"],
-        stroke_width=2,
-        italic=True
+        stroke_width=0,
+        italic=False
     )
     return canvas
 
