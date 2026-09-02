@@ -11,6 +11,7 @@ import os
 import colorsys
 import io
 import base64
+import uuid
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageChops, ImageEnhance, ImageOps
 from colorthief import ColorThief
@@ -114,9 +115,13 @@ st.markdown("""
         [data-testid="stFileUploaderFile"],
         [data-testid="stFileUploaderFileName"],
         [data-testid="stFileUploaderDeleteBtn"],
+        [data-testid="stFileUploaderFileCard"],
+        [data-testid="stFileUploaderFileCard"] *,
         [data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] [data-testid="stFileUploaderFile"],
         [data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] ~ div,
         [data-testid="stFileUploader"] ul,
+        [data-testid="stFileUploader"] li,
+        [data-testid="stFileUploader"] small,
         [data-testid="stFileUploaderPagination"] {
             display: none !important;
         }
@@ -334,10 +339,11 @@ def group_icons_with_fill(uploaded_files, group_size=4):
 
 
 class StoredUpload:
-    def __init__(self, name, data):
+    def __init__(self, name, data, uid=None):
         self.name = name
         self._data = data
         self.size = len(data)
+        self.uid = uid or uuid.uuid4().hex
 
     def getvalue(self):
         return self._data
@@ -409,24 +415,25 @@ def render_upload_card_grid(uploaded_files, state_key, columns=4):
         for offset, file in enumerate(row_files):
             card_col = row_cols[offset]
             with card_col:
-                del_col, _ = st.columns([1, 7])
-                with del_col:
-                    if st.button("×", key=f"{state_key}_delete_{start + offset}_{file.name}", help="删除这张图"):
-                        remaining = [one for one in files if one is not file]
-                        if state_key == "general":
-                            st.session_state.general_uploaded_icons = remaining
-                            st.session_state.general_uploaded_source_signature = uploads_signature(remaining)
-                        else:
-                            st.session_state.template6_uploaded_icons = remaining
-                            st.session_state.template6_uploaded_source_signature = uploads_signature(remaining)
-                        trigger_rerun()
-                try:
-                    thumb = Image.open(io.BytesIO(file.getvalue())).convert("RGBA")
-                    thumb.thumbnail((40, 40), Image.Resampling.LANCZOS)
-                    st.image(thumb, width=40)
-                except:
-                    st.write("预览失败")
-                st.caption(file.name)
+                with st.container(border=True):
+                    header_left, header_right = st.columns([7, 1])
+                    with header_right:
+                        if st.button("×", key=f"{state_key}_delete_{file.uid}", help="删除这张图"):
+                            remaining = [one for one in files if getattr(one, "uid", None) != file.uid]
+                            if state_key == "general":
+                                st.session_state.general_uploaded_icons = remaining
+                                st.session_state.general_uploaded_source_signature = uploads_signature(remaining)
+                            else:
+                                st.session_state.template6_uploaded_icons = remaining
+                                st.session_state.template6_uploaded_source_signature = uploads_signature(remaining)
+                            trigger_rerun()
+                    try:
+                        thumb = Image.open(io.BytesIO(file.getvalue())).convert("RGBA")
+                        thumb.thumbnail((40, 40), Image.Resampling.LANCZOS)
+                        st.image(thumb, width=40)
+                    except:
+                        st.write("预览失败")
+                    st.caption(f"{start + offset + 1}")
 
 
 def build_sortable_custom_style(uploaded_files, prefix):
