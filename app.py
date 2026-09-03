@@ -1557,16 +1557,16 @@ def render_template_8(canvas, icon_src, main_title, sub_title, font_main, sub_fo
     img_width, img_height = canvas.size
     draw = ImageDraw.Draw(canvas)
 
-    icon_size = int(img_width * 0.64)
+    icon_size = int(img_width * 0.68)
     icon_border = int(icon_size * 0.026)
     icon_x = (img_width - (icon_size + icon_border * 2)) // 2
-    icon_y = int(img_height * 0.285)
+    icon_y = int(img_height * 0.245)
 
     icon_card = make_outlined_icon_card(
         icon_src,
         icon_size=icon_size,
         border_px=icon_border,
-        radius_ratio=0.18,
+        radius_ratio=0.22,
         shadow_alpha=0,
         shadow_blur=0,
         inner_shadow_alpha=0
