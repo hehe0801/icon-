@@ -460,6 +460,10 @@ def uploads_signature(uploaded_files):
     return tuple((file.name, getattr(file, "size", 0)) for file in uploaded_files or [])
 
 
+def upload_file_signature(file_obj):
+    return (file_obj.name, getattr(file_obj, "size", 0))
+
+
 def reorder_uploads_by_names(uploaded_files, ordered_names):
     buckets = {}
     for file in uploaded_files or []:
@@ -1718,17 +1722,26 @@ with col_left:
             key="template6_icon_mode"
         )
     uploaded_icons = list(st.session_state.general_uploaded_icons)
-    if not uploaded_icons:
-        uploaded_icons_raw = st.file_uploader(
-            "选择 Icon 图像",
-            type=["png", "jpg", "jpeg"],
-            accept_multiple_files=True,
-            key=f"icon_uploader_{st.session_state.icon_uploader_nonce}"
-        )
-        if uploaded_icons_raw:
-            general_signature = uploads_signature(uploaded_icons_raw)
-            st.session_state.general_uploaded_source_signature = general_signature
-            st.session_state.general_uploaded_icons = make_stored_uploads(uploaded_icons_raw)
+    uploaded_icons_raw = st.file_uploader(
+        "选择 Icon 图像",
+        type=["png", "jpg", "jpeg"],
+        accept_multiple_files=True,
+        key=f"icon_uploader_{st.session_state.icon_uploader_nonce}"
+    )
+    if uploaded_icons_raw:
+        current_signature = uploads_signature(uploaded_icons_raw)
+        existing_signature = uploads_signature(uploaded_icons)
+        if current_signature != existing_signature:
+            merged = list(uploaded_icons)
+            seen = {upload_file_signature(file) for file in merged}
+            for file in uploaded_icons_raw:
+                sig = upload_file_signature(file)
+                if sig not in seen:
+                    merged.append(file)
+                    seen.add(sig)
+            st.session_state.general_uploaded_icons = make_stored_uploads(merged[:9])
+            st.session_state.general_uploaded_source_signature = uploads_signature(st.session_state.general_uploaded_icons)
+            st.session_state.icon_uploader_nonce += 1
             trigger_rerun()
 
     if uploaded_icons and len(uploaded_icons) > 9:
@@ -1752,17 +1765,26 @@ with col_left:
 
     uploaded_icons_template6 = list(st.session_state.template6_uploaded_icons)
     if any("模板6" in t for t in selected_templates) and template6_icon_mode == "模板6专属":
-        if not uploaded_icons_template6:
-            template6_uploaded_raw = st.file_uploader(
-                "选择模板6专属 Icon 图像",
-                type=["png", "jpg", "jpeg"],
-                accept_multiple_files=True,
-                key=f"icon_uploader_template6_{st.session_state.template6_icon_uploader_nonce}"
-            )
-            if template6_uploaded_raw:
-                raw_signature = uploads_signature(template6_uploaded_raw)
-                st.session_state.template6_uploaded_source_signature = raw_signature
-                st.session_state.template6_uploaded_icons = make_stored_uploads(template6_uploaded_raw)
+        template6_uploaded_raw = st.file_uploader(
+            "选择模板6专属 Icon 图像",
+            type=["png", "jpg", "jpeg"],
+            accept_multiple_files=True,
+            key=f"icon_uploader_template6_{st.session_state.template6_icon_uploader_nonce}"
+        )
+        if template6_uploaded_raw:
+            current_signature = uploads_signature(template6_uploaded_raw)
+            existing_signature = uploads_signature(uploaded_icons_template6)
+            if current_signature != existing_signature:
+                merged = list(uploaded_icons_template6)
+                seen = {upload_file_signature(file) for file in merged}
+                for file in template6_uploaded_raw:
+                    sig = upload_file_signature(file)
+                    if sig not in seen:
+                        merged.append(file)
+                        seen.add(sig)
+                st.session_state.template6_uploaded_icons = make_stored_uploads(merged)
+                st.session_state.template6_uploaded_source_signature = uploads_signature(st.session_state.template6_uploaded_icons)
+                st.session_state.template6_icon_uploader_nonce += 1
                 trigger_rerun()
 
         if uploaded_icons_template6:
