@@ -880,15 +880,15 @@ def make_solid_background_color(icon_hue, style_name="干净明亮", bg_seed=Non
             [("同类色", 58), ("邻近色", 32), ("对比色", 10)],
             rng
         )
-        sat_range = (0.66, 0.88)
+        sat_range = (0.77, 0.9)
         light_range = (0.66, 0.77)
     else:
         relation = pick_weighted_choice(
             [("同类色", 50), ("邻近色", 36), ("对比色", 14)],
             rng
         )
-        sat_range = (0.44, 0.80)
-        light_range = (0.88, 0.92)
+        sat_range = (0.5, 0.80)
+        light_range = (0.7, 0.92)
 
     if relation == "同类色":
         hue = (icon_hue + rng.uniform(-0.02, 0.02)) % 1.0
