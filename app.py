@@ -875,7 +875,7 @@ def pick_weighted_choice(weighted_items, rng):
 def make_solid_background_color(icon_hue, style_name="干净明亮", bg_seed=None, idx=0):
     rng = random.Random((bg_seed or 0) + idx * 10007)
 
-    if style_name == "马卡龙":
+    if style_name in ("马卡龙", "邪恶马卡龙"):
         relation = pick_weighted_choice(
             [("同类色", 58), ("邻近色", 32), ("对比色", 10)],
             rng
@@ -944,7 +944,7 @@ def create_background_canvas(bg_config, idx, icon_hue):
             return Image.new("RGB", (img_width, img_height), color=(255, 255, 255)), img_width, img_height
         if solid_style == "纯黑":
             return Image.new("RGB", (img_width, img_height), color=(0, 0, 0)), img_width, img_height
-        if solid_style in ("明亮彩色", "马卡龙"):
+        if solid_style in ("明亮彩色", "马卡龙", "邪恶马卡龙"):
             rgb, _ = make_solid_background_color(icon_hue, solid_style, bg_seed=bg_seed, idx=idx)
             return Image.new("RGB", (img_width, img_height), color=rgb), img_width, img_height
         return Image.new("RGB", (img_width, img_height), color=(255, 255, 255)), img_width, img_height
@@ -1557,10 +1557,10 @@ def render_template_8(canvas, icon_src, main_title, sub_title, font_main, sub_fo
     img_width, img_height = canvas.size
     draw = ImageDraw.Draw(canvas)
 
-    icon_size = int(img_width * 0.50)
-    icon_border = int(icon_size * 0.030)
+    icon_size = int(img_width * 0.64)
+    icon_border = int(icon_size * 0.026)
     icon_x = (img_width - (icon_size + icon_border * 2)) // 2
-    icon_y = int(img_height * 0.17)
+    icon_y = int(img_height * 0.285)
 
     icon_card = make_outlined_icon_card(
         icon_src,
@@ -1573,11 +1573,11 @@ def render_template_8(canvas, icon_src, main_title, sub_title, font_main, sub_fo
     )
     canvas.paste(icon_card, (icon_x, icon_y), icon_card)
 
-    main_font = fit_font_to_width(font_main, main_title, int(img_width * 0.102), int(img_width * 0.88), min_size=86)
-    sub_font_main = fit_font_to_width(font_main, sub_title, int(img_width * 0.102), int(img_width * 0.88), min_size=86)
+    main_font = fit_font_to_width(font_main, main_title, int(img_width * 0.114), int(img_width * 0.90), min_size=94)
+    sub_font_main = fit_font_to_width(font_main, sub_title, int(img_width * 0.114), int(img_width * 0.90), min_size=94)
 
-    main_y = int(img_height * 0.75)
-    sub_y = int(img_height * 0.875)
+    main_y = int(img_height * 0.165)
+    sub_y = int(img_height * 0.845)
 
     draw.text((img_width // 2, main_y), main_title, fill=colors["main"], font=main_font, anchor="mm")
     draw.text((img_width // 2, sub_y), sub_title, fill=colors["sub"], font=sub_font_main, anchor="mm")
@@ -1805,7 +1805,7 @@ with col_left:
     bg_source = st.radio("模板1/3/7/8背景来源：", ["纯色背景", "AI智能渐变生成", "上传背景图"])
 
     if bg_source == "纯色背景":
-        solid_style = st.selectbox("纯色美学风格：", ["纯白", "纯黑", "明亮彩色", "马卡龙"])
+        solid_style = st.selectbox("纯色美学风格：", ["纯白", "纯黑", "明亮彩色", "邪恶马卡龙"])
     elif bg_source == "AI智能渐变生成":
         bg_type = st.selectbox("选择渐变美学风格：", ["同色清爽渐变", "多色梦幻渐变"])
     elif bg_source == "上传背景图":  # 🛠️ 修复：与单选框定义的字符串保持完全一致
