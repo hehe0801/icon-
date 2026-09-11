@@ -909,7 +909,7 @@ def make_solid_background_color(icon_hue, style_name="干净明亮", bg_seed=Non
             [("同类色", 58), ("邻近色", 32), ("对比色", 10)],
             rng
         )
-        sat_range = (0.20, 0.38)
+        sat_range = (0.30, 0.58)
         light_range = (0.91, 0.98)
     else:
         relation = pick_weighted_choice(
@@ -1621,16 +1621,16 @@ def render_template_9(canvas, icon_src, main_title, sub_title, font_main, sub_fo
     title_font = fit_font_to_width(
         font_main,
         main_title,
-        int(img_width * 0.095),
+        int(img_width * 0.110),
         int(img_width * 0.78),
-        min_size=72
+        min_size=80
     )
     promo_font = fit_font_to_width(
         sub_font,
         sub_title,
-        int(img_width * 0.053),
+        int(img_width * 0.078),
         int(img_width * 0.94),
-        min_size=38
+        min_size=50
     )
     tag_font = fit_font_to_width(
         sub_font,
