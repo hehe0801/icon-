@@ -1628,7 +1628,7 @@ def render_template_9(canvas, icon_src, main_title, sub_title, font_main, sub_fo
     promo_font = fit_font_to_width(
         sub_font,
         sub_title,
-        int(img_width * 0.078),
+        int(img_width * 0.084),
         int(img_width * 0.94),
         min_size=50
     )
