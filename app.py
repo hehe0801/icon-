@@ -520,11 +520,14 @@ def build_sortable_custom_style(uploaded_files, prefix):
     css = [
         """
         .sortable-component {
-            display: flex;
-            flex-wrap: wrap;
+            display: flex !important;
+            flex-wrap: wrap !important;
             gap: 8px;
             align-items: flex-start;
             width: 100%;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
         }
         .sortable-component.vertical {
             display: flex;
@@ -533,17 +536,24 @@ def build_sortable_custom_style(uploaded_files, prefix):
         .sortable-container {
             width: 100%;
             padding: 0;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
         }
         .sortable-container-body {
-            display: flex;
-            flex-wrap: wrap;
+            display: flex !important;
+            flex-wrap: wrap !important;
             gap: 8px;
             align-items: flex-start;
             padding-top: 2px;
             counter-reset: upload-card;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
         }
         .sortable-item {
             width: 82px;
+            flex: 0 0 82px;
             min-height: 84px;
             border-radius: 10px;
             border: 1px solid #d1d5db;
@@ -827,6 +837,14 @@ TEMPLATE_DEFAULTS = {
         "sub_title": "好玩上头小游戏",
         "promo_text": "不用下载不占内存\n好玩上头小游戏",
         "colors": {"tag": "#FFFFFF", "main": "#1F1F1F", "sub": "#1F1F1F"},
+        "auto_color": False
+    },
+    "模板9：三段式图标风": {
+        "mode": "单组文案应用该模板全部图片",
+        "main_title": "无聊救星",
+        "sub_title": "巨解乏！莫名其妙就玩了一整天",
+        "promo_text": "无聊救星\n巨解乏！莫名其妙就玩了一整天",
+        "colors": {"tag": "#333333", "main": "#333333", "sub": "#333333"},
         "auto_color": False
     }
 }
@@ -1588,9 +1606,77 @@ def render_template_8(canvas, icon_src, main_title, sub_title, font_main, sub_fo
     return canvas
 
 
+def render_template_9(canvas, icon_src, main_title, sub_title, font_main, sub_font, raw_rgb, colors, tag_text="App Store"):
+    img_width, img_height = canvas.size
+    draw = ImageDraw.Draw(canvas)
+
+    # 三段式布局：粗体小标题、细体宣传语、圆角 Icon、底部游戏名。
+    title_font = fit_font_to_width(
+        font_main,
+        main_title,
+        int(img_width * 0.095),
+        int(img_width * 0.78),
+        min_size=72
+    )
+    promo_font = fit_font_to_width(
+        sub_font,
+        sub_title,
+        int(img_width * 0.053),
+        int(img_width * 0.94),
+        min_size=38
+    )
+    tag_font = fit_font_to_width(
+        sub_font,
+        tag_text,
+        int(img_width * 0.060),
+        int(img_width * 0.70),
+        min_size=42
+    )
+
+    title_y = int(img_height * 0.17)
+    promo_y = int(img_height * 0.275)
+    icon_size = int(img_width * 0.50)
+    icon_y = int(img_height * 0.385)
+    tag_y = int(img_height * 0.825)
+
+    draw.text(
+        (img_width // 2, title_y),
+        main_title,
+        fill=colors["main"],
+        font=title_font,
+        anchor="mm"
+    )
+    draw.text(
+        (img_width // 2, promo_y),
+        sub_title,
+        fill=colors["sub"],
+        font=promo_font,
+        anchor="mm"
+    )
+
+    icon_rounded = make_rounded_icon_cover(
+        icon_src,
+        icon_size,
+        radius_ratio=0.18
+    )
+    icon_x = (img_width - icon_size) // 2
+    canvas.paste(icon_rounded, (icon_x, icon_y), icon_rounded)
+
+    draw = ImageDraw.Draw(canvas)
+    draw.text(
+        (img_width // 2, tag_y),
+        tag_text,
+        fill=colors["tag"],
+        font=tag_font,
+        anchor="mm"
+    )
+    return canvas
+
+
 TEMPLATE_REGISTRY["模板6：四宫格图标风"] = render_template_6
 TEMPLATE_REGISTRY["模板7：上头解压风"] = render_template_7
 TEMPLATE_REGISTRY["模板8：方形强视觉"] = render_template_8
+TEMPLATE_REGISTRY["模板9：三段式图标风"] = render_template_9
 
 
 @st.cache_data(show_spinner=False, max_entries=128)
@@ -1655,6 +1741,8 @@ def render_card_png_bytes(
         render_function = TEMPLATE_REGISTRY[template_choice]
         if "模板2" in template_choice:
             canvas = render_template_2(canvas, icon_src, main_title, sub_title, font_main, sub_font, raw_rgb, colors, tag_text)
+        elif "模板9" in template_choice:
+            canvas = render_template_9(canvas, icon_src, main_title, sub_title, font_main, sub_font, raw_rgb, colors, tag_text)
         else:
             canvas = render_function(canvas, icon_src, main_title, sub_title, font_main, sub_font, raw_rgb, colors)
 
@@ -1807,7 +1895,7 @@ with col_left:
 
     # 📍 [UI名称修改点] 步骤三：背景画布设置
     st.header("3. 背景画布设置")
-    st.markdown('<div class="step-hint">模板2使用背景图库随机匹配，模板4使用智能图库背景，模板1/3/7/8使用下面的批量背景设置。</div>', unsafe_allow_html=True)
+    st.markdown('<div class="step-hint">模板2使用背景图库随机匹配，模板4使用智能图库背景，模板1/3/7/8/9使用下面的批量背景设置。</div>', unsafe_allow_html=True)
     st.session_state.lock_background = st.toggle("锁定当前背景", value=st.session_state.lock_background)
     
     uploaded_bg = None
@@ -1824,7 +1912,7 @@ with col_left:
         fixed_bg_templates.append("模板5：双层图标背景")
     if fixed_bg_templates:
         st.info("；".join(fixed_bg_templates))
-    bg_source = st.radio("模板1/3/7/8背景来源：", ["纯色背景", "AI智能渐变生成", "上传背景图"])
+    bg_source = st.radio("模板1/3/7/8/9背景来源：", ["纯色背景", "AI智能渐变生成", "上传背景图"])
 
     if bg_source == "纯色背景":
         solid_style = st.selectbox("纯色美学风格：", ["纯白", "纯黑", "明亮彩色", "邪恶马卡龙"])
