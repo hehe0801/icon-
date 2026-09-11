@@ -828,7 +828,7 @@ TEMPLATE_DEFAULTS = {
         "main_title": "超上头的解压小游戏",
         "sub_title": "解压休闲/打发时间/免费畅玩。",
         "promo_text": "超上头的解压小游戏\n解压休闲/打发时间/免费畅玩。",
-        "colors": {"tag": "#FFFFFF", "main": "#2F1812", "sub": "#2F1812"},
+        "colors": {"tag": "#000000", "main": "#000000", "sub": "#000000"},
         "auto_color": False
     },
     "模板8：方形强视觉": {
@@ -860,7 +860,14 @@ def ensure_template_copy_config(template_name):
             "colors": default_cfg["colors"].copy(),
             "auto_color": default_cfg["auto_color"]
         }
-    return st.session_state.template_copy_configs[template_name]
+    config = st.session_state.template_copy_configs[template_name]
+    if template_name == "模板7：上头解压风":
+        # 将旧版默认深棕色迁移为纯黑，但保留用户主动选择的其他颜色。
+        if config.get("colors", {}).get("main") == "#2F1812":
+            config["colors"]["main"] = "#000000"
+        if config.get("colors", {}).get("sub") == "#2F1812":
+            config["colors"]["sub"] = "#000000"
+    return config
 
 def get_template_label(template_name):
     return template_name.split("：")[0]
