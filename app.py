@@ -2163,7 +2163,7 @@ if has_any_icons:
                     bg_cfg.get("solid_style", "纯白"),
                     card_seed
                 )
-                preview_width = 520 if st.session_state.fast_preview_mode else 1280
+                preview_width = 420 if st.session_state.fast_preview_mode else 1280
                 rendered_png = render_card_png_bytes(
                     icon_bytes_group,
                     group_idx,
@@ -2267,7 +2267,7 @@ if has_any_icons:
                     bg_cfg.get("solid_style", "纯白"),
                     card_seed
                 )
-                preview_width = 520 if st.session_state.fast_preview_mode else 1280
+                preview_width = 420 if st.session_state.fast_preview_mode else 1280
                 rendered_png = render_card_png_bytes(
                     icon_bytes,
                     idx,
