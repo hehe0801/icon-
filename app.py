@@ -909,7 +909,7 @@ def make_solid_background_color(icon_hue, style_name="干净明亮", bg_seed=Non
             [("同类色", 58), ("邻近色", 32), ("对比色", 10)],
             rng
         )
-        sat_range = (0.30, 0.58)
+        sat_range = (0.60, 0.80)
         light_range = (0.91, 0.98)
     else:
         relation = pick_weighted_choice(
