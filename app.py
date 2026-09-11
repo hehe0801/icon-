@@ -904,6 +904,13 @@ def make_solid_background_color(icon_hue, style_name="干净明亮", bg_seed=Non
         )
         sat_range = (0.88, 0.95)
         light_range = (0.66, 0.77)
+    elif style_name == "善良马卡龙":
+        relation = pick_weighted_choice(
+            [("同类色", 58), ("邻近色", 32), ("对比色", 10)],
+            rng
+        )
+        sat_range = (0.20, 0.38)
+        light_range = (0.91, 0.98)
     else:
         relation = pick_weighted_choice(
             [("同类色", 50), ("邻近色", 36), ("对比色", 14)],
@@ -966,7 +973,7 @@ def create_background_canvas(bg_config, idx, icon_hue):
             return Image.new("RGB", (img_width, img_height), color=(255, 255, 255)), img_width, img_height
         if solid_style == "纯黑":
             return Image.new("RGB", (img_width, img_height), color=(0, 0, 0)), img_width, img_height
-        if solid_style in ("明亮彩色", "马卡龙", "邪恶马卡龙"):
+        if solid_style in ("明亮彩色", "马卡龙", "邪恶马卡龙", "善良马卡龙"):
             rgb, _ = make_solid_background_color(icon_hue, solid_style, bg_seed=bg_seed, idx=idx)
             return Image.new("RGB", (img_width, img_height), color=rgb), img_width, img_height
         return Image.new("RGB", (img_width, img_height), color=(255, 255, 255)), img_width, img_height
@@ -1915,7 +1922,7 @@ with col_left:
     bg_source = st.radio("模板1/3/7/8/9背景来源：", ["纯色背景", "AI智能渐变生成", "上传背景图"])
 
     if bg_source == "纯色背景":
-        solid_style = st.selectbox("纯色美学风格：", ["纯白", "纯黑", "明亮彩色", "邪恶马卡龙"])
+        solid_style = st.selectbox("纯色美学风格：", ["纯白", "纯黑", "明亮彩色", "邪恶马卡龙", "善良马卡龙"])
     elif bg_source == "AI智能渐变生成":
         bg_type = st.selectbox("选择渐变美学风格：", ["同色清爽渐变", "多色梦幻渐变"])
     elif bg_source == "上传背景图":  # 🛠️ 修复：与单选框定义的字符串保持完全一致
